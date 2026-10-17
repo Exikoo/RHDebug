@@ -1,6 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { monsterManager, MONSTER_TEMPLATES } from "../monsterManager.js";
 import { isEnterable, orthogonalNeighbours } from "./mapUtils.js";
+import { getItemEmoji, EMPTY_SLOT_EMOJI } from "./itemDisplay.js";
 
 /**
  * @param {Object} player
@@ -127,15 +128,23 @@ async function checkTileForMonster(mapId, mapData, x, y) {
 }
 
 /**
+ * The "back to map" button on its own, so it can be dropped into a row
+ * alongside other buttons (see createBagButtons) instead of always
+ * taking up a full row by itself.
+ * @returns {ButtonBuilder}
+ */
+export function createBackButtonComponent() {
+  return new ButtonBuilder()
+    .setCustomId("map_back_to_map")
+    .setLabel("⬅️ Back")
+    .setStyle(ButtonStyle.Danger);
+}
+
+/**
  * @returns {ActionRowBuilder}
  */
 export function createBackButton() {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("map_back_to_map")
-      .setLabel("⬅️ Back to Map")
-      .setStyle(ButtonStyle.Danger),
-  );
+  return new ActionRowBuilder().addComponents(createBackButtonComponent());
 }
 
 /**
@@ -243,4 +252,86 @@ export function createRequestedByButton(username) {
     .setLabel(`Requested by ${username}`)
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(true);
+}
+
+/**
+ * Builds the bag/inventory action rows:
+ *  - Row 1: up to 5 bag-slot buttons (slots 1-5), each showing the
+ *    item's emoji, or a disabled placeholder if the slot is empty.
+ *  - Row 2: up to 4 more bag-slot buttons (slots 6-9) + a back button,
+ *    padded with disabled placeholders if the player has fewer slots.
+ *  - Row 3: Use/Equip and Trash buttons for whichever slot is
+ *    currently selected, plus the usual placeholder/quit buttons.
+ *
+ * Display is capped at 9 slots (matching Discord's 5-per-row limit
+ * across two rows). If bagSlots ever needs to exceed 9, this will need
+ * pagination.
+ * @param {Object} playerProfile
+ * @param {number|null} selectedIndex
+ * @returns {ActionRowBuilder[]}
+ */
+export function createBagButtons(playerProfile, selectedIndex = null) {
+  const slots = playerProfile.inventory || [];
+  const displaySlots = Math.min(playerProfile.bagSlots || slots.length, 9);
+
+  const slotButtons = [];
+  for (let i = 0; i < displaySlots; i++) {
+    const slot = slots[i];
+    const btn = new ButtonBuilder().setCustomId(`map_bag_slot_${i}`);
+
+    if (slot?.item) {
+      btn
+        .setEmoji(getItemEmoji(slot.item))
+        .setStyle(
+          i === selectedIndex ? ButtonStyle.Primary : ButtonStyle.Secondary,
+        );
+    } else {
+      btn
+        .setEmoji(EMPTY_SLOT_EMOJI)
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(true);
+    }
+
+    slotButtons.push(btn);
+  }
+
+  const row1 = new ActionRowBuilder().addComponents(...slotButtons.slice(0, 5));
+
+  const row2 = new ActionRowBuilder();
+  row2.addComponents(...slotButtons.slice(5, 9));
+  while (row2.components.length < 4) {
+    row2.addComponents(
+      createPlaceholderButton(`map_bag_placeholder_${row2.components.length}`),
+    );
+  }
+  row2.addComponents(createBackButtonComponent());
+
+  const selectedSlot = selectedIndex !== null ? slots[selectedIndex] : null;
+  const selectedItem = selectedSlot?.item;
+  const usableTypes = ["consumable", "weapon", "armor", "accessory"];
+  const canUse = Boolean(
+    selectedItem && usableTypes.includes(selectedItem.type),
+  );
+  const useLabel =
+    selectedItem && ["weapon", "armor", "accessory"].includes(selectedItem.type)
+      ? "Equip"
+      : "Use";
+
+  const row3 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("map_bag_use")
+      .setLabel(useLabel)
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(!canUse),
+    new ButtonBuilder()
+      .setCustomId("map_bag_trash")
+      .setLabel("Trash")
+      .setStyle(ButtonStyle.Danger)
+      .setDisabled(!selectedItem),
+    createPlaceholderButton("map_bag_placeholder_action_1"),
+    createPlaceholderButton("map_bag_placeholder_action_2"),
+    createQuitButton(),
+  );
+
+  return [row1, row2, row3];
 }

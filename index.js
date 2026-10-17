@@ -3,7 +3,7 @@ import { loadEvents } from "./handlers/eventHandler.js";
 import "dotenv/config";
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
   allowedMentions: {
     parse: [],
     repliedUser: false,

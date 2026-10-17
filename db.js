@@ -8,10 +8,10 @@ const { mongooseConnectionString } = JSON.parse(
 
 async function setupDatabase() {
   await mongoose.connect(mongooseConnectionString);
-  console.log("✅ Connected to database");
+  console.log("✅ Connected to MongoDB database");
 
   await ItemManager.initializeItems();
-  console.log("✅ Items initialized");
+  console.log("✅ Items initialized successfully!");
 }
 
 export { setupDatabase };

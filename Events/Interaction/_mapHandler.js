@@ -7,7 +7,7 @@ import {
 } from "discord.js";
 
 import Profile from "../../models/Profile.js";
-import Map from "../../models/Map.js";
+import MapModel from "../../models/Map.js";
 
 import { generateMapRows } from "../../utils/mapRenderer.js";
 import combatManager from "../../utils/combatManager.js";
@@ -16,13 +16,14 @@ import { isEnterable, tileAt } from "../../utils/mapUtils.js";
 import { replyError } from "../../utils/errorHandler.js";
 
 import {
-  generateInventoryDisplay,
+  generateBagDisplay,
   generateStatsDisplay,
 } from "../../utils/menuDisplays.js";
 
 import {
   createNavigationButtons,
   createBackButton,
+  createBagButtons,
   createTileActionButtons,
   isNearShop,
   createPlaceholderButton,
@@ -42,6 +43,14 @@ const COMBAT_MESSAGE_DISPLAY = 4;
 const combatMessagesMap = new Map();
 
 /**
+ * Tracks which bag slot each user currently has selected while the
+ * inventory view is open. Cleared whenever the bag is (re)opened, an
+ * item is used/trashed, or the player navigates back to the map.
+ * @type {Map<string, number>}
+ */
+const bagSelectionMap = new Map();
+
+/**
  * @param {import("discord.js").Interaction} interaction
  * @returns {boolean}
  */
@@ -58,7 +67,7 @@ export async function execute(interaction, client) {
     const originalUserId = interaction.message.interaction?.user?.id;
     if (!originalUserId || interaction.user.id !== originalUserId) {
       return interaction.reply({
-        content: "❌ Only the original adventurer can use these buttons.",
+        content: "❌ Only the original member can use these buttons.",
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -73,7 +82,7 @@ export async function execute(interaction, client) {
 
     if (!player || !player.currentMapId) return sendSessionExpired(interaction);
 
-    const currentMap = await Map.findOne({ mapId: player.currentMapId });
+    const currentMap = await MapModel.findOne({ mapId: player.currentMapId });
     if (!currentMap) {
       return sendMapError(interaction, `Map ${player.currentMapId} not found`);
     }
@@ -140,7 +149,10 @@ export async function execute(interaction, client) {
 
     // === REFRESH MAP ===
     if (id.startsWith("map_move_") || id === "map_back_to_map") {
-      const refreshedMap = await Map.findOne({ mapId: player.currentMapId });
+      bagSelectionMap.delete(player.userId);
+      const refreshedMap = await MapModel.findOne({
+        mapId: player.currentMapId,
+      });
       return interaction.editReply({
         embeds: [await createMainMapEmbed(player, combinedStats, refreshedMap)],
         components: await createNavigationButtons(
@@ -151,12 +163,100 @@ export async function execute(interaction, client) {
       });
     }
 
-    // === INVENTORY ===
+    // === INVENTORY (BAG) ===
     if (id === "map_show_inventory") {
+      bagSelectionMap.delete(player.userId);
       return interaction.editReply({
-        embeds: [generateInventoryDisplay(player)],
-        components: [createBackButton()],
+        embeds: [generateBagDisplay(player, null)],
+        components: createBagButtons(player, null),
       });
+    }
+
+    // === BAG: SELECT A SLOT ===
+    if (id.startsWith("map_bag_slot_")) {
+      const index = Number(id.slice("map_bag_slot_".length));
+      const slotHasItem = Boolean(player.inventory[index]);
+
+      if (slotHasItem) {
+        bagSelectionMap.set(player.userId, index);
+      } else {
+        bagSelectionMap.delete(player.userId);
+      }
+
+      const selected = bagSelectionMap.has(player.userId)
+        ? bagSelectionMap.get(player.userId)
+        : null;
+
+      return interaction.editReply({
+        embeds: [generateBagDisplay(player, selected)],
+        components: createBagButtons(player, selected),
+      });
+    }
+
+    // === BAG: USE / EQUIP SELECTED ITEM ===
+    if (id === "map_bag_use") {
+      const index = bagSelectionMap.get(player.userId);
+
+      if (index === undefined || !player.inventory[index]) {
+        bagSelectionMap.delete(player.userId);
+        return interaction.editReply({
+          embeds: [generateBagDisplay(player, null)],
+          components: createBagButtons(player, null),
+        });
+      }
+
+      try {
+        const resultMessage = await player.useItem(index);
+        bagSelectionMap.delete(player.userId);
+
+        await interaction.editReply({
+          embeds: [generateBagDisplay(player, null)],
+          components: createBagButtons(player, null),
+        });
+
+        return interaction.followUp({
+          content: `✅ ${resultMessage}`,
+          flags: MessageFlags.Ephemeral,
+        });
+      } catch (error) {
+        return interaction.followUp({
+          content: `❌ Error: ${error.message}`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+    }
+
+    // === BAG: TRASH SELECTED ITEM ===
+    if (id === "map_bag_trash") {
+      const index = bagSelectionMap.get(player.userId);
+
+      if (index === undefined || !player.inventory[index]) {
+        bagSelectionMap.delete(player.userId);
+        return interaction.editReply({
+          embeds: [generateBagDisplay(player, null)],
+          components: createBagButtons(player, null),
+        });
+      }
+
+      try {
+        const resultMessage = await player.discardItem(index, 1);
+        bagSelectionMap.delete(player.userId);
+
+        await interaction.editReply({
+          embeds: [generateBagDisplay(player, null)],
+          components: createBagButtons(player, null),
+        });
+
+        return interaction.followUp({
+          content: `🗑️ ${resultMessage}`,
+          flags: MessageFlags.Ephemeral,
+        });
+      } catch (error) {
+        return interaction.followUp({
+          content: `❌ Error: ${error.message}`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
     }
 
     // === STATS ===
@@ -215,7 +315,10 @@ export async function execute(interaction, client) {
     }
 
     if (id === "map_action_shop_leave") {
-      const refreshedMap = await Map.findOne({ mapId: player.currentMapId });
+      bagSelectionMap.delete(player.userId);
+      const refreshedMap = await MapModel.findOne({
+        mapId: player.currentMapId,
+      });
       return interaction.editReply({
         embeds: [await createMainMapEmbed(player, combinedStats, refreshedMap)],
         components: await createNavigationButtons(
@@ -440,7 +543,9 @@ async function sendSessionExpired(interaction) {
     embeds: [
       new EmbedBuilder()
         .setColor(0xff0000)
-        .setDescription("❌ Your map session expired. Use `/map` again."),
+        .setDescription(
+          "❌ Your map session expired. Use `/map` again to reinitiate it. If you think this is an error, please report the problem to the developers.",
+        ),
     ],
     components: [],
   });
@@ -472,7 +577,8 @@ async function handleMapTransition(player, connection, interaction) {
   } catch (error) {
     console.error("Map transition error:", error);
     await interaction.followUp({
-      content: "❌ Could not transition to the new area.",
+      content:
+        "❌ Could not transition to the new area. Report this problem to the developers.",
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -535,7 +641,7 @@ async function handleCombat(
 
     await player.save();
 
-    const refreshedMap = await Map.findOne({ mapId: player.currentMapId });
+    const refreshedMap = await MapModel.findOne({ mapId: player.currentMapId });
     const refreshedStats = calculateCombinedStats(player);
 
     await interaction.editReply({
@@ -549,7 +655,8 @@ async function handleCombat(
   } catch (error) {
     console.error("Combat error:", error);
     await interaction.followUp({
-      content: "❌ Something went wrong with the combat.",
+      content:
+        "❌ Something went wrong with the combat. Please report this problem to the developers.",
       flags: MessageFlags.Ephemeral,
     });
   }

@@ -25,9 +25,12 @@ export async function loadFiles(dirName) {
     return files.filter((file) => !path.basename(file).startsWith("_"));
   })().catch((error) => {
     fileCache.delete(dirName); // don't leave a failed scan cached — allow retry
-    throw new Error(`Failed to load files from ${dirName}: ${error.message}`, {
-      cause: error,
-    });
+    throw new Error(
+      `Failed to load files from ${dirName}: ${error.message}. Please check files.`,
+      {
+        cause: error,
+      },
+    );
   });
 
   fileCache.set(dirName, loadPromise);

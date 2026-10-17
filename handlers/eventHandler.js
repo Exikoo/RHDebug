@@ -5,16 +5,8 @@ import path from "node:path";
 import EventEmitter from "node:events";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-// ============================================================================
-// ESM equivalents of __filename / __dirname (not available by default in ESM)
-// ============================================================================
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// ============================================================================
-// CONSTANTS & CONFIGURATION (unchanged)
-// ============================================================================
 
 const COLORS = {
   reset: "\x1b[0m",
@@ -60,10 +52,6 @@ const TABLE_CONFIG = {
 
 // Precompute the safe events directory once
 const EVENTS_DIR = path.resolve(__dirname, "../Events");
-
-// ============================================================================
-// EVENT VALIDATION (unchanged)
-// ============================================================================
 
 function validateEvent(event) {
   if (!event || typeof event !== "object") {

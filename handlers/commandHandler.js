@@ -3,19 +3,9 @@ import { table } from "table";
 import { performance } from "node:perf_hooks";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { createHash } from "node:crypto";
-import fs from "node:fs";
-
-// ============================================================================
-// ESM equivalents of __filename / __dirname (not available by default in ESM)
-// ============================================================================
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// ============================================================================
-// CONSTANTS & CONFIGURATION (unchanged)
-// ============================================================================
 
 const COLORS = {
   reset: "\x1b[0m",
@@ -65,14 +55,6 @@ const TABLE_CONFIG = {
 // Precompute the safe commands directory once
 const COMMANDS_DIR = path.resolve(__dirname, "../Command");
 
-// Where we remember the hash of the last set of commands we registered,
-// so we can skip re-registering with Discord when nothing has changed.
-const HASH_FILE = path.resolve(__dirname, "../data/commandsHash.json");
-
-// ============================================================================
-// COMMAND VALIDATION (unchanged, but kept for completeness)
-// ============================================================================
-
 function validateCommand(command) {
   if (!command || typeof command !== "object") {
     return { isValid: false, error: "Command must be an object" };
@@ -101,13 +83,16 @@ function validateCommand(command) {
     typeof command.data.name !== "string" ||
     command.data.name.trim() === ""
   ) {
-    return { isValid: false, error: "Command name must be a non-empty string" };
+    return {
+      isValid: false,
+      error: "Command name must be a non-empty string. Please re-check.",
+    };
   }
 
   if (command.data.name.length > CONFIG.MAX_COMMAND_NAME_LENGTH) {
     return {
       isValid: false,
-      error: `Command name exceeds ${CONFIG.MAX_COMMAND_NAME_LENGTH} characters`,
+      error: `Command name exceeds ${CONFIG.MAX_COMMAND_NAME_LENGTH} characters. Please re-check.`,
     };
   }
 
@@ -115,12 +100,15 @@ function validateCommand(command) {
     return {
       isValid: false,
       error:
-        "Command name must be lowercase alphanumeric with underscores/hyphens",
+        "Command name must be lowercase alphanumeric with underscores/hyphens. Please re-check.",
     };
   }
 
   if (typeof command.execute !== "function") {
-    return { isValid: false, error: "Command execute must be a function" };
+    return {
+      isValid: false,
+      error: "Command execute must be a function. Please re-check.",
+    };
   }
 
   if (command.data.type !== undefined) {
@@ -128,7 +116,7 @@ function validateCommand(command) {
     if (!validTypes.includes(command.data.type)) {
       return {
         isValid: false,
-        error: `Invalid command type: ${command.data.type}`,
+        error: `Invalid command type: ${command.data.type}. Please put a valid command type.`,
       };
     }
   }
@@ -140,21 +128,21 @@ function validateCommand(command) {
     ) {
       return {
         isValid: false,
-        error: "CHAT_INPUT commands require a description",
+        error:
+          "CHAT_INPUT commands require a description. Please put a description.",
       };
     }
   }
 
   if (typeof command.data.toJSON !== "function") {
-    return { isValid: false, error: "Command data must have toJSON method" };
+    return {
+      isValid: false,
+      error: "Command data must have toJSON method. Please re-check.",
+    };
   }
 
   return { isValid: true };
 }
-
-// ============================================================================
-// SAFE PATH CHECK (optimized)
-// ============================================================================
 
 function isPathSafe(resolvedPath) {
   return (
@@ -174,7 +162,7 @@ async function loadCommandFile(file, client) {
     const resolvedPath = path.resolve(file);
 
     if (!isPathSafe(resolvedPath)) {
-      throw new Error("Invalid file path detected");
+      throw new Error("Invalid file path detected.");
     }
 
     // Dynamic import replaces require(); Node caches by resolved URL so
@@ -203,10 +191,6 @@ async function loadCommandFile(file, client) {
     };
   }
 }
-
-// ============================================================================
-// TABLE FORMATTING (unchanged)
-// ============================================================================
 
 function createTableHeader() {
   return [
@@ -248,14 +232,10 @@ function formatTable(tableData) {
   return table(tableData, TABLE_CONFIG);
 }
 
-// ============================================================================
-// COMMAND REGISTRATION (unchanged)
-// ============================================================================
-
 async function registerCommands(client, commandsArray) {
   if (!client.application) {
     throw new Error(
-      "Client application not available for command registration",
+      "Client application not available for command registration. Please wait.",
     );
   }
 
@@ -295,10 +275,6 @@ async function registerCommands(client, commandsArray) {
   }
 }
 
-// ============================================================================
-// LOGGING (unchanged)
-// ============================================================================
-
 function logSummary(successCount, errorCount, loadTime) {
   console.log(
     `${COLORS.blue}${COLORS.bright}» ${successCount} commands loaded successfully${COLORS.reset}`,
@@ -326,10 +302,6 @@ function logPartialFailure(successCount, errorCount, error) {
   );
   console.warn(`${COLORS.yellow}${error.message}${COLORS.reset}`);
 }
-
-// ============================================================================
-// MAIN FUNCTION (optimized)
-// ============================================================================
 
 async function loadCommands(client) {
   if (!client || typeof client !== "object") {

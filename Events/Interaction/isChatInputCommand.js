@@ -10,13 +10,13 @@ export default {
     const command = client.commands.get(interaction.commandName);
     if (!command)
       return interaction.reply({
-        content: "❌ This command is outdated.",
+        content: "❌ This command is outdated. Wait a bit then try again.",
         ephemeral: true,
       });
 
     if (command.developer && interaction.user.id !== "597806191472672788")
       return interaction.reply({
-        content: "❌ This command is only available to the developer.",
+        content: "❌ This command is only available to the developers.",
         ephemeral: true,
       });
 

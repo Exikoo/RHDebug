@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { calculateCombinedStats } from "../utils/playerUtils.js";
 
 const profileSchema = new mongoose.Schema(
   {
@@ -176,6 +177,113 @@ profileSchema.methods.equipItem = async function (itemId) {
 
   await this.save();
   return this;
+};
+
+/**
+ * Removes `quantity` of the item sitting at the given inventory index,
+ * deleting the slot entirely once its quantity reaches zero. Does not
+ * save — callers that only call this should save afterwards.
+ * @param {number} inventoryIndex
+ * @param {number} [quantity]
+ */
+profileSchema.methods.removeInventoryAt = function (
+  inventoryIndex,
+  quantity = 1,
+) {
+  const slot = this.inventory[inventoryIndex];
+  if (!slot) return;
+
+  slot.quantity -= quantity;
+  if (slot.quantity <= 0) {
+    this.inventory.splice(inventoryIndex, 1);
+  }
+};
+
+/**
+ * Uses or equips the item sitting in the given bag slot.
+ * - Consumables restore health/magic (capped at the player's current
+ *   max, including equipment bonuses) and are consumed one at a time.
+ * - Weapons/armor/accessories are equipped via `equipItem`.
+ * - Anything else (e.g. materials) throws, since it has no bag action.
+ * @param {number} inventoryIndex
+ * @returns {Promise<string>} A human-readable summary of what happened.
+ */
+profileSchema.methods.useItem = async function (inventoryIndex) {
+  const slot = this.inventory[inventoryIndex];
+  if (!slot) throw new Error("That bag slot is empty");
+
+  const ItemModel = mongoose.model("Item");
+  const item =
+    slot.item && slot.item.type
+      ? slot.item
+      : await ItemModel.findById(slot.item);
+  if (!item) throw new Error("Item not found");
+
+  let message;
+
+  if (item.type === "consumable") {
+    const combined = calculateCombinedStats(this);
+    let healed = 0;
+    let restored = 0;
+
+    if (item.stats?.health) {
+      const before = this.currentHealth;
+      this.currentHealth = Math.min(
+        combined.health,
+        this.currentHealth + item.stats.health,
+      );
+      healed = this.currentHealth - before;
+    }
+
+    if (item.stats?.magic) {
+      const before = this.currentMana;
+      this.currentMana = Math.min(
+        combined.magic,
+        this.currentMana + item.stats.magic,
+      );
+      restored = this.currentMana - before;
+    }
+
+    const parts = [];
+    if (healed > 0) parts.push(`+${healed} HP`);
+    if (restored > 0) parts.push(`+${restored} MP`);
+
+    message = parts.length
+      ? `You used ${item.name} (${parts.join(", ")}).`
+      : `You used ${item.name}, but nothing happened.`;
+
+    this.removeInventoryAt(inventoryIndex, 1);
+  } else if (["weapon", "armor", "accessory"].includes(item.type)) {
+    await this.equipItem(item._id);
+    message = `You equipped ${item.name}.`;
+  } else {
+    throw new Error(`${item.name} can't be used.`);
+  }
+
+  await this.save();
+  return message;
+};
+
+/**
+ * Discards `quantity` of the item in the given bag slot.
+ * @param {number} inventoryIndex
+ * @param {number} [quantity]
+ * @returns {Promise<string>}
+ */
+profileSchema.methods.discardItem = async function (
+  inventoryIndex,
+  quantity = 1,
+) {
+  const slot = this.inventory[inventoryIndex];
+  if (!slot) throw new Error("That bag slot is empty");
+
+  const itemName = slot.item?.name || "item";
+  const removed = Math.min(quantity, slot.quantity);
+
+  this.removeInventoryAt(inventoryIndex, removed);
+  await this.save();
+
+  return `You discarded ${removed}x ${itemName}.`;
 };
 
 profileSchema.methods.changeMap = async function (

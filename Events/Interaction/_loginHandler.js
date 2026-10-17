@@ -39,7 +39,8 @@ const QUIT_RESPONSE = {
 };
 
 const ERROR_RESPONSE = {
-  content: "❌ Failed to create your character. Please try again.",
+  content:
+    "❌ Failed to create your character. Please try again. If you think this is a problem, please report it to the developers.",
   embeds: [],
   components: [],
 };
