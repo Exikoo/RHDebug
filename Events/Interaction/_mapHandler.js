@@ -7,11 +7,16 @@ import {
 } from "discord.js";
 
 import Profile from "../../models/Profile.js";
-import MapModel from "../../models/Map.js";
 
+import { getMap } from "../../utils/mapCache.js";
+import { getCombinedStats, getItemMap, idOf } from "../../utils/itemCache.js";
 import { generateMapRows } from "../../utils/mapRenderer.js";
 import combatManager from "../../utils/combatManager.js";
-import { monsterManager, MONSTER_TEMPLATES } from "../../monsterManager.js";
+import {
+  monsterManager,
+  MONSTER_TEMPLATES,
+  monsterKey,
+} from "../../monsterManager.js";
 import { isEnterable, tileAt } from "../../utils/mapUtils.js";
 import { replyError } from "../../utils/errorHandler.js";
 
@@ -32,23 +37,74 @@ import {
   createRequestedByButton,
 } from "../../utils/buttonComponents.js";
 
-import { calculateCombinedStats } from "../../utils/playerUtils.js";
 import { LEGEND } from "../../config/mapConfig.js";
+
+/*
+ * Performance notes
+ * -----------------
+ * Every button press used to cost ~8+ database queries, most of them
+ * sequential: 1 profile + 4 populates + 2 map reads + 1 query per monster
+ * tile (twice: once for rendering, once for the buttons).
+ *
+ *  - The profile is loaded WITHOUT populate. Equipment stats and bag
+ *    contents come from an in-memory item cache (utils/itemCache.js).
+ *  - Maps come from an in-memory cache (utils/mapCache.js).
+ *  - Dead monsters are fetched with ONE query per render, and skipped
+ *    entirely on maps that contain no monsters.
+ *  - The deferUpdate() ack and the profile query run concurrently, and
+ *    the profile save overlaps the dead-monster query.
+ *  - Combat does a single atomic update instead of read-modify-save.
+ */
+
+const EPHEMERAL = MessageFlags.Ephemeral;
+const EMPTY_SET = new Set();
 
 const COMBAT_MESSAGE_TTL = 10 * 60 * 1000;
 const COMBAT_MESSAGE_MAX = 20;
 const COMBAT_MESSAGE_DISPLAY = 4;
+const BAG_SELECTION_TTL = 10 * 60 * 1000;
+
+const MOVES = {
+  map_move_up: { dx: 0, dy: -1 },
+  map_move_down: { dx: 0, dy: 1 },
+  map_move_left: { dx: -1, dy: 0 },
+  map_move_right: { dx: 1, dy: 0 },
+};
+
+/** Paths model methods (useItem / discardItem) need populated. */
+const ITEM_ACTION_POPULATE = [
+  "inventory.item",
+  "equipped.weapon",
+  "equipped.armor",
+  "equipped.accessory",
+];
 
 /** @type {Map<string, {messages: string[], lastTouched: number}>} */
 const combatMessagesMap = new Map();
 
 /**
- * Tracks which bag slot each user currently has selected while the
- * inventory view is open. Cleared whenever the bag is (re)opened, an
- * item is used/trashed, or the player navigates back to the map.
- * @type {Map<string, number>}
+ * Which bag slot each user has selected while the bag view is open.
+ * @type {Map<string, {index: number, touched: number}>}
  */
 const bagSelectionMap = new Map();
+
+const getBagSelection = (userId) => bagSelectionMap.get(userId)?.index ?? null;
+const clearBagSelection = (userId) => bagSelectionMap.delete(userId);
+const setBagSelection = (userId, index) =>
+  bagSelectionMap.set(userId, { index, touched: Date.now() });
+
+/**
+ * @typedef {Object} Ctx
+ * @property {import("discord.js").ButtonInteraction} interaction
+ * @property {any} player  Profile document, NOT populated.
+ * @property {any} map     Cached lean map document. Never mutate it.
+ * @property {string} userId
+ * @property {() => Promise<any>} stats  Combined stats (memoized per press).
+ */
+
+// =====================================================================
+// Entry point
+// =====================================================================
 
 /**
  * @param {import("discord.js").Interaction} interaction
@@ -59,275 +115,38 @@ export function match(interaction) {
 }
 
 /**
- * @param {import("discord.js").Interaction} interaction
- * @param {import("discord.js").Client} client
+ * @param {import("discord.js").ButtonInteraction} interaction
  */
-export async function execute(interaction, client) {
+export async function execute(interaction) {
   try {
-    const originalUserId = interaction.message.interaction?.user?.id;
+    const originalUserId =
+      interaction.message.interactionMetadata?.user?.id ??
+      interaction.message.interaction?.user?.id;
+
     if (!originalUserId || interaction.user.id !== originalUserId) {
       return interaction.reply({
         content: "❌ Only the original member can use these buttons.",
-        flags: MessageFlags.Ephemeral,
+        flags: EPHEMERAL,
       });
     }
 
-    await interaction.deferUpdate();
+    const handler = resolveHandler(interaction.customId);
+    if (!handler) return interaction.deferUpdate(); // e.g. disabled placeholders
 
-    const player = await Profile.findOne({ userId: interaction.user.id })
-      .populate("inventory.item")
-      .populate("equipped.weapon")
-      .populate("equipped.armor")
-      .populate("equipped.accessory");
+    // Acknowledge and fetch the profile at the same time.
+    const [, player] = await Promise.all([
+      interaction.deferUpdate(),
+      Profile.findOne({ userId: interaction.user.id }),
+    ]);
 
     if (!player || !player.currentMapId) return sendSessionExpired(interaction);
 
-    const currentMap = await MapModel.findOne({ mapId: player.currentMapId });
-    if (!currentMap) {
+    const map = await getMap(player.currentMapId);
+    if (!map) {
       return sendMapError(interaction, `Map ${player.currentMapId} not found`);
     }
 
-    const combinedStats = calculateCombinedStats(player);
-    const id = interaction.customId;
-    const mapData = currentMap.mapData;
-    const { x, y } = player.location;
-
-    // === MOVEMENT ===
-    if (id.startsWith("map_move_")) {
-      const next = { x, y };
-      if (id === "map_move_up") next.y--;
-      if (id === "map_move_down") next.y++;
-      if (id === "map_move_left") next.x--;
-      if (id === "map_move_right") next.x++;
-
-      const tile = tileAt(mapData, next.x, next.y);
-      if (tile !== null) {
-        if (MONSTER_TEMPLATES[tile]) {
-          const dead = await monsterManager.isMonsterDead(
-            player.currentMapId,
-            next.x,
-            next.y,
-          );
-
-          if (dead) {
-            player.location = next;
-            player.currentTarget = null;
-            player.targetProgress = "0/0";
-            player.targetPosition = null;
-            await player.save();
-          } else {
-            await handleCombat(player, currentMap, next, tile, interaction);
-            return;
-          }
-        } else if (isEnterable(mapData, next.x, next.y)) {
-          const oldPosition = { ...player.location };
-          player.location = next;
-
-          if (player.currentTarget && player.targetPosition) {
-            const oldDistance = calculateDistance(
-              oldPosition,
-              player.targetPosition,
-            );
-            const newDistance = calculateDistance(
-              player.location,
-              player.targetPosition,
-            );
-
-            if (newDistance > oldDistance && newDistance > 1) {
-              player.currentTarget = null;
-              player.targetProgress = "0/0";
-              player.targetPosition = null;
-              combatManager.endCombat(player.userId);
-            }
-          }
-
-          await player.save();
-          await checkForMapEvents(player, currentMap, next, interaction);
-        }
-      }
-    }
-
-    // === REFRESH MAP ===
-    if (id.startsWith("map_move_") || id === "map_back_to_map") {
-      bagSelectionMap.delete(player.userId);
-      const refreshedMap = await MapModel.findOne({
-        mapId: player.currentMapId,
-      });
-      return interaction.editReply({
-        embeds: [await createMainMapEmbed(player, combinedStats, refreshedMap)],
-        components: await createNavigationButtons(
-          player,
-          refreshedMap,
-          interaction,
-        ),
-      });
-    }
-
-    // === INVENTORY (BAG) ===
-    if (id === "map_show_inventory") {
-      bagSelectionMap.delete(player.userId);
-      return interaction.editReply({
-        embeds: [generateBagDisplay(player, null)],
-        components: createBagButtons(player, null),
-      });
-    }
-
-    // === BAG: SELECT A SLOT ===
-    if (id.startsWith("map_bag_slot_")) {
-      const index = Number(id.slice("map_bag_slot_".length));
-      const slotHasItem = Boolean(player.inventory[index]);
-
-      if (slotHasItem) {
-        bagSelectionMap.set(player.userId, index);
-      } else {
-        bagSelectionMap.delete(player.userId);
-      }
-
-      const selected = bagSelectionMap.has(player.userId)
-        ? bagSelectionMap.get(player.userId)
-        : null;
-
-      return interaction.editReply({
-        embeds: [generateBagDisplay(player, selected)],
-        components: createBagButtons(player, selected),
-      });
-    }
-
-    // === BAG: USE / EQUIP SELECTED ITEM ===
-    if (id === "map_bag_use") {
-      const index = bagSelectionMap.get(player.userId);
-
-      if (index === undefined || !player.inventory[index]) {
-        bagSelectionMap.delete(player.userId);
-        return interaction.editReply({
-          embeds: [generateBagDisplay(player, null)],
-          components: createBagButtons(player, null),
-        });
-      }
-
-      try {
-        const resultMessage = await player.useItem(index);
-        bagSelectionMap.delete(player.userId);
-
-        await interaction.editReply({
-          embeds: [generateBagDisplay(player, null)],
-          components: createBagButtons(player, null),
-        });
-
-        return interaction.followUp({
-          content: `✅ ${resultMessage}`,
-          flags: MessageFlags.Ephemeral,
-        });
-      } catch (error) {
-        return interaction.followUp({
-          content: `❌ Error: ${error.message}`,
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-    }
-
-    // === BAG: TRASH SELECTED ITEM ===
-    if (id === "map_bag_trash") {
-      const index = bagSelectionMap.get(player.userId);
-
-      if (index === undefined || !player.inventory[index]) {
-        bagSelectionMap.delete(player.userId);
-        return interaction.editReply({
-          embeds: [generateBagDisplay(player, null)],
-          components: createBagButtons(player, null),
-        });
-      }
-
-      try {
-        const resultMessage = await player.discardItem(index, 1);
-        bagSelectionMap.delete(player.userId);
-
-        await interaction.editReply({
-          embeds: [generateBagDisplay(player, null)],
-          components: createBagButtons(player, null),
-        });
-
-        return interaction.followUp({
-          content: `🗑️ ${resultMessage}`,
-          flags: MessageFlags.Ephemeral,
-        });
-      } catch (error) {
-        return interaction.followUp({
-          content: `❌ Error: ${error.message}`,
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-    }
-
-    // === STATS ===
-    if (id === "map_show_stats") {
-      player.totalStats = combinedStats;
-      return interaction.editReply({
-        embeds: [generateStatsDisplay(player)],
-        components: [createBackButton()],
-      });
-    }
-
-    // === ACTIONS MENU ===
-    if (id === "map_show_actions") {
-      const tile = mapData[y][x];
-      let desc = "*No special actions here.*";
-
-      if (LEGEND[tile]?.event === "stairs")
-        desc = "You see stairs leading down.";
-      const mapEvent = currentMap.events?.find(
-        (e) => e.position.x === x && e.position.y === y,
-      );
-      if (mapEvent) desc = getEventDescription(mapEvent);
-
-      const actionsEmbed = new EmbedBuilder()
-        .setColor(0x99aab5)
-        .setTitle("🛠️ Available Actions")
-        .setDescription(desc);
-
-      const tileButtons = createTileActionButtons(tile);
-      return interaction.editReply({
-        embeds: [actionsEmbed],
-        components: tileButtons
-          ? [tileButtons, createBackButton()]
-          : [createBackButton()],
-      });
-    }
-
-    // === STAIRS ===
-    if (id === "map_action_stairs") {
-      return interaction.followUp({
-        content: "Descending into the dungeon…",
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    // === SHOP ===
-    if (id === "map_action_shop") {
-      if (!isNearShop(player, currentMap)) {
-        return interaction.followUp({
-          content: "❌ You are no longer near a shop!",
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-
-      return interaction.editReply(buildShopReply(player, interaction));
-    }
-
-    if (id === "map_action_shop_leave") {
-      bagSelectionMap.delete(player.userId);
-      const refreshedMap = await MapModel.findOne({
-        mapId: player.currentMapId,
-      });
-      return interaction.editReply({
-        embeds: [await createMainMapEmbed(player, combinedStats, refreshedMap)],
-        components: await createNavigationButtons(
-          player,
-          refreshedMap,
-          interaction,
-        ),
-      });
-    }
+    return await handler(createContext(interaction, player, map));
   } catch (error) {
     await replyError(interaction, error, {
       logPrefix: "Map interaction error:",
@@ -335,15 +154,113 @@ export async function execute(interaction, client) {
   }
 }
 
+/** @returns {Ctx} */
+function createContext(interaction, player, map) {
+  let statsPromise = null;
+  return {
+    interaction,
+    player,
+    map,
+    userId: player.userId,
+    stats: () => (statsPromise ??= getCombinedStats(player)),
+  };
+}
+
 // =====================================================================
-// Embed / display
+// Routing
 // =====================================================================
 
-async function createMainMapEmbed(player, combinedStats, currentMap) {
+const EXACT_HANDLERS = new Map([
+  ["map_back_to_map", showMap],
+  ["map_action_shop_leave", showMap],
+  ["map_show_inventory", openBag],
+  ["map_bag_use", (ctx) => runBagAction(ctx, "✅", useSelected)],
+  ["map_bag_trash", (ctx) => runBagAction(ctx, "🗑️", trashSelected)],
+  ["map_show_stats", showStats],
+  ["map_show_actions", showActions],
+  ["map_action_stairs", useStairs],
+  ["map_action_shop", openShop],
+]);
+
+const PREFIX_HANDLERS = [
+  ["map_move_", handleMove],
+  ["map_bag_slot_", selectBagSlot],
+];
+
+function resolveHandler(customId) {
+  const exact = EXACT_HANDLERS.get(customId);
+  if (exact) return exact;
+
+  for (const [prefix, handler] of PREFIX_HANDLERS) {
+    if (customId.startsWith(prefix)) return handler;
+  }
+  return null;
+}
+
+// =====================================================================
+// Map view
+// =====================================================================
+
+/** Dead-monster keys for a map; no query at all if it has no monsters. */
+function loadDeadKeys(map) {
+  return map.hasMonsters
+    ? monsterManager.getDeadPositions(map.mapId)
+    : EMPTY_SET;
+}
+
+/**
+ * @param {Ctx} ctx
+ * @param {object} map
+ * @param {Set<string>|Promise<Set<string>>} [deadKeys] Fetched if omitted.
+ */
+async function renderMap(ctx, map, deadKeys) {
+  const [stats, dead] = await Promise.all([
+    ctx.stats(),
+    deadKeys ?? loadDeadKeys(map),
+  ]);
+
+  return ctx.interaction.editReply({
+    embeds: [createMainMapEmbed(ctx.player, stats, map, dead)],
+    components: await createNavigationButtons(
+      ctx.player,
+      map,
+      ctx.interaction,
+      dead,
+    ),
+  });
+}
+
+/** @param {Ctx} ctx */
+async function showMap(ctx) {
+  clearBagSelection(ctx.userId);
+  return renderMap(ctx, ctx.map);
+}
+
+/**
+ * Cheap alternative to deep-cloning the whole map on every render: rows
+ * are only copied when they contain a dead monster.
+ */
+function applyDeadMonsters(mapData, deadKeys) {
+  if (deadKeys.size === 0) return mapData;
+
+  const display = mapData.slice();
+  for (const key of deadKeys) {
+    const [x, y] = key.split(",").map(Number);
+    if (!MONSTER_TEMPLATES[mapData[y]?.[x]]) continue;
+
+    if (display[y] === mapData[y]) display[y] = mapData[y].slice();
+    display[y][x] = "PUDDLE";
+  }
+  return display;
+}
+
+function createMainMapEmbed(player, combinedStats, map, deadKeys) {
   const { x, y } = player.location;
 
-  const displayMapData = await getDisplayMapData(currentMap);
-  const rows = generateMapRows(displayMapData, player.location);
+  const rows = generateMapRows(
+    applyDeadMonsters(map.mapData, deadKeys),
+    player.location,
+  );
 
   const inventoryUsed = player.inventory?.length ?? 0;
   const currentHealth = player.currentHealth || combinedStats.health;
@@ -392,21 +309,288 @@ async function createMainMapEmbed(player, combinedStats, currentMap) {
   return embed;
 }
 
-async function getDisplayMapData(currentMap) {
-  const displayMapData = JSON.parse(JSON.stringify(currentMap.mapData));
+// =====================================================================
+// Movement
+// =====================================================================
 
-  for (let y = 0; y < displayMapData.length; y++) {
-    for (let x = 0; x < displayMapData[y].length; x++) {
-      const tile = displayMapData[y][x];
+/** Starts the dead-monster lookup; safe to leave un-awaited on early exits. */
+function startDeadLookup(map) {
+  const lookup = Promise.resolve(loadDeadKeys(map));
+  lookup.catch(() => {}); // still throws when awaited; avoids an unhandled rejection otherwise
+  return lookup;
+}
 
-      if (MONSTER_TEMPLATES[tile]) {
-        const dead = await monsterManager.isMonsterDead(currentMap.mapId, x, y);
-        if (dead) displayMapData[y][x] = "PUDDLE";
-      }
+/** @param {Ctx} ctx */
+async function handleMove(ctx) {
+  const { interaction, player, userId } = ctx;
+  let map = ctx.map;
+  clearBagSelection(userId);
+
+  const move = MOVES[interaction.customId];
+  const next = move
+    ? { x: player.location.x + move.dx, y: player.location.y + move.dy }
+    : null;
+  const tile = next ? tileAt(map.mapData, next.x, next.y) : null;
+  const isMonster = tile !== null && Boolean(MONSTER_TEMPLATES[tile]);
+  const canStep =
+    tile !== null && !isMonster && isEnterable(map.mapData, next.x, next.y);
+  const connection = canStep ? findConnection(map, next) : null;
+
+  // Start the dead-monster lookup now so it overlaps with the save below —
+  // unless we are about to leave this map, in which case it would be wasted.
+  let deadKeys = connection ? undefined : startDeadLookup(map);
+
+  if (isMonster) {
+    const dead = await deadKeys;
+
+    if (!dead.has(monsterKey(next.x, next.y))) {
+      return handleCombat(ctx, next, tile, dead);
+    }
+
+    // Walk over the remains.
+    player.location = next;
+    clearTarget(player);
+    await player.save();
+  } else if (canStep) {
+    applyStep(player, next);
+    await Promise.all([player.save(), deadKeys]);
+
+    if (connection) {
+      const arrived = await transition(ctx, connection);
+      if (arrived)
+        map = arrived; // renderMap fetches the new map's own lookup
+      else deadKeys = startDeadLookup(ctx.map); // transition failed: still here
     }
   }
 
-  return displayMapData;
+  return renderMap(ctx, map, deadKeys);
+}
+
+function clearTarget(player) {
+  player.currentTarget = null;
+  player.targetProgress = "0/0";
+  player.targetPosition = null;
+}
+
+/** Moves the player and drops their combat target if they walk away from it. */
+function applyStep(player, next) {
+  const oldPosition = { x: player.location.x, y: player.location.y };
+  player.location = next;
+
+  if (player.currentTarget && player.targetPosition) {
+    const oldDistance = calculateDistance(oldPosition, player.targetPosition);
+    const newDistance = calculateDistance(
+      player.location,
+      player.targetPosition,
+    );
+
+    if (newDistance > oldDistance && newDistance > 1) {
+      clearTarget(player);
+      combatManager.endCombat(player.userId);
+    }
+  }
+}
+
+function calculateDistance(pos1, pos2) {
+  return Math.abs(pos1.x - pos2.x) + Math.abs(pos1.y - pos2.y);
+}
+
+// =====================================================================
+// Map transitions
+// =====================================================================
+
+function findConnection(map, position) {
+  return map.connections?.find(
+    (conn) =>
+      conn.fromPosition?.x === position.x &&
+      conn.fromPosition?.y === position.y,
+  );
+}
+
+/** Fire-and-forget ephemeral message; never blocks or breaks the render. */
+function notify(interaction, content) {
+  interaction
+    .followUp({ content, flags: EPHEMERAL })
+    .catch((error) => console.error("Follow-up failed:", error));
+}
+
+/**
+ * @param {Ctx} ctx
+ * @returns {Promise<object|null>} The new map, or null if the move failed.
+ */
+async function transition(ctx, connection) {
+  const { interaction, player } = ctx;
+
+  try {
+    await player.changeMap(
+      connection.targetMapId,
+      connection.targetPosition || null,
+    );
+  } catch (error) {
+    console.error("Map transition error:", error);
+    notify(
+      interaction,
+      "❌ Could not transition to the new area. Report this problem to the developers.",
+    );
+    return null;
+  }
+
+  notify(interaction, "🚪 You have entered a new area...");
+  return getMap(player.currentMapId);
+}
+
+// =====================================================================
+// Combat
+// =====================================================================
+
+/**
+ * @param {Ctx} ctx
+ * @param {{x: number, y: number}} position
+ * @param {string} monsterType
+ * @param {Set<string>} deadKeys
+ */
+async function handleCombat(ctx, position, monsterType, deadKeys) {
+  const { interaction, player, map } = ctx;
+
+  try {
+    const [stats, monster] = await Promise.all([
+      ctx.stats(),
+      monsterManager.getOrCreateMonster(
+        map.mapId,
+        position.x,
+        position.y,
+        monsterType,
+      ),
+    ]);
+
+    const playerDamage = Math.max(1, stats.attack - monster.defense);
+    const monsterDamage = Math.max(1, monster.attack - stats.defense);
+
+    const {
+      monster: updated,
+      killed,
+      alreadyDead,
+    } = await monsterManager.applyDamage(monster._id, playerDamage);
+
+    let nextDead = deadKeys;
+
+    if (alreadyDead) {
+      // Another player finished it first: no hit, no reward.
+      addCombatMessage(player.userId, `${monster.name} was already defeated.`);
+      clearTarget(player);
+      nextDead = new Set(deadKeys).add(monsterKey(position.x, position.y));
+    } else {
+      addCombatMessage(
+        player.userId,
+        `You hit ${monster.name} for ${playerDamage} HP!`,
+      );
+
+      player.currentHealth = Math.max(0, player.currentHealth - monsterDamage);
+      player.currentTarget = monster.name;
+      player.targetProgress = `${updated.currentHealth}/${updated.maxHealth}`;
+      player.targetPosition = position;
+
+      if (killed) {
+        player.experience += monster.experience;
+        player.gold += Math.floor(monster.experience / 2);
+        clearTarget(player);
+        addCombatMessage(player.userId, `You defeated ${monster.name}!`);
+        nextDead = new Set(deadKeys).add(monsterKey(position.x, position.y));
+      } else {
+        addCombatMessage(
+          player.userId,
+          `${monster.name} hit you for ${monsterDamage} HP!`,
+        );
+      }
+    }
+
+    await player.save();
+    return await renderMap(ctx, map, nextDead);
+  } catch (error) {
+    console.error("Combat error:", error);
+    await interaction.followUp({
+      content:
+        "❌ Something went wrong with the combat. Please report this problem to the developers.",
+      flags: EPHEMERAL,
+    });
+  }
+}
+
+// =====================================================================
+// Combat message log
+// =====================================================================
+
+function addCombatMessage(userId, message) {
+  const now = Date.now();
+  const entry = combatMessagesMap.get(userId) ?? {
+    messages: [],
+    lastTouched: now,
+  };
+
+  entry.messages.unshift(message);
+  if (entry.messages.length > COMBAT_MESSAGE_MAX) {
+    entry.messages.length = COMBAT_MESSAGE_MAX;
+  }
+  entry.lastTouched = now;
+
+  combatMessagesMap.set(userId, entry);
+}
+
+function getRecentCombatMessages(userId) {
+  const entry = combatMessagesMap.get(userId);
+  return entry ? entry.messages.slice(0, COMBAT_MESSAGE_DISPLAY) : [];
+}
+
+// =====================================================================
+// Stats / actions / stairs / shop
+// =====================================================================
+
+/** @param {Ctx} ctx */
+async function showStats(ctx) {
+  const { player, interaction } = ctx;
+
+  // generateStatsDisplay reads `totalStats`; hand it the cache-derived
+  // value so equipment bonuses show up without populating the profile.
+  const view = {
+    username: player.username,
+    level: player.level,
+    class: player.class,
+    experience: player.experience,
+    totalStats: await ctx.stats(),
+  };
+
+  return interaction.editReply({
+    embeds: [generateStatsDisplay(view)],
+    components: [createBackButton()],
+  });
+}
+
+/** @param {Ctx} ctx */
+async function showActions(ctx) {
+  const { player, map, interaction } = ctx;
+  const { x, y } = player.location;
+
+  const tile = map.mapData[y]?.[x];
+  let desc = "*No special actions here.*";
+
+  if (LEGEND[tile]?.event === "stairs") desc = "You see stairs leading down.";
+  const mapEvent = map.events?.find(
+    (e) => e.position?.x === x && e.position?.y === y,
+  );
+  if (mapEvent) desc = getEventDescription(mapEvent);
+
+  const actionsEmbed = new EmbedBuilder()
+    .setColor(0x99aab5)
+    .setTitle("🛠️ Available Actions")
+    .setDescription(desc);
+
+  const tileButtons = createTileActionButtons(tile);
+  return interaction.editReply({
+    embeds: [actionsEmbed],
+    components: tileButtons
+      ? [tileButtons, createBackButton()]
+      : [createBackButton()],
+  });
 }
 
 function getEventDescription(event) {
@@ -420,6 +604,28 @@ function getEventDescription(event) {
     default:
       return "Something interesting is here.";
   }
+}
+
+/** @param {Ctx} ctx */
+async function useStairs(ctx) {
+  return ctx.interaction.followUp({
+    content: "Descending into the dungeon…",
+    flags: EPHEMERAL,
+  });
+}
+
+/** @param {Ctx} ctx */
+async function openShop(ctx) {
+  const { player, map, interaction } = ctx;
+
+  if (!isNearShop(player, map)) {
+    return interaction.followUp({
+      content: "❌ You are no longer near a shop!",
+      flags: EPHEMERAL,
+    });
+  }
+
+  return interaction.editReply(buildShopReply(player, interaction));
 }
 
 function buildShopReply(player, interaction) {
@@ -490,36 +696,85 @@ function buildShopReply(player, interaction) {
 }
 
 // =====================================================================
-// Combat message log
+// Bag
 // =====================================================================
 
-function addCombatMessage(userId, message) {
-  const now = Date.now();
-  const entry = combatMessagesMap.get(userId) ?? {
-    messages: [],
-    lastTouched: now,
+/**
+ * Display-only snapshot of the bag with items resolved from the cache
+ * (so opening / browsing the bag needs no populate queries).
+ */
+function buildBagView(player, items) {
+  return {
+    username: player.username,
+    gold: player.gold,
+    bagSlots: player.bagSlots,
+    inventory: player.inventory.map((slot) => ({
+      // Prefer the cached item: same data, already in memory, and it works
+      // whether or not this slot has been populated.
+      item: items.get(idOf(slot.item)) ?? (slot.item?.name ? slot.item : null),
+      quantity: slot.quantity,
+    })),
   };
+}
 
-  entry.messages.unshift(message);
-  if (entry.messages.length > COMBAT_MESSAGE_MAX) {
-    entry.messages.length = COMBAT_MESSAGE_MAX;
+/** @param {Ctx} ctx */
+async function showBag(ctx, selected = null) {
+  const view = buildBagView(ctx.player, await getItemMap());
+
+  return ctx.interaction.editReply({
+    embeds: [generateBagDisplay(view, selected)],
+    components: createBagButtons(view, selected),
+  });
+}
+
+/** @param {Ctx} ctx */
+async function openBag(ctx) {
+  clearBagSelection(ctx.userId);
+  return showBag(ctx, null);
+}
+
+/** @param {Ctx} ctx */
+async function selectBagSlot(ctx) {
+  const index = Number(ctx.interaction.customId.slice("map_bag_slot_".length));
+
+  if (ctx.player.inventory[index]) setBagSelection(ctx.userId, index);
+  else clearBagSelection(ctx.userId);
+
+  return showBag(ctx, getBagSelection(ctx.userId));
+}
+
+const useSelected = (player, index) => player.useItem(index);
+const trashSelected = (player, index) => player.discardItem(index, 1);
+
+/**
+ * Shared flow for Use/Equip and Trash. These call model methods that need
+ * populated items, so the profile is populated here — only on these
+ * clicks, not on every press.
+ * @param {Ctx} ctx
+ */
+async function runBagAction(ctx, icon, action) {
+  const { interaction, player, userId } = ctx;
+  const index = getBagSelection(userId);
+
+  if (index === null || !player.inventory[index]) {
+    clearBagSelection(userId);
+    return showBag(ctx, null);
   }
-  entry.lastTouched = now;
 
-  combatMessagesMap.set(userId, entry);
-}
+  try {
+    await player.populate(ITEM_ACTION_POPULATE);
+    const message = await action(player, index);
+    clearBagSelection(userId);
 
-function getRecentCombatMessages(userId) {
-  const entry = combatMessagesMap.get(userId);
-  return entry ? entry.messages.slice(0, COMBAT_MESSAGE_DISPLAY) : [];
-}
-
-function cleanupOldCombatMessages() {
-  const now = Date.now();
-  for (const [userId, entry] of combatMessagesMap.entries()) {
-    if (now - entry.lastTouched > COMBAT_MESSAGE_TTL) {
-      combatMessagesMap.delete(userId);
-    }
+    await Promise.all([
+      showBag(ctx, null),
+      interaction.followUp({ content: `${icon} ${message}`, flags: EPHEMERAL }),
+    ]);
+  } catch (error) {
+    await interaction.followUp({
+      content: `❌ Error: ${error.message}`,
+      flags: EPHEMERAL,
+    });
   }
 }
 
@@ -552,125 +807,21 @@ async function sendSessionExpired(interaction) {
 }
 
 // =====================================================================
-// Map transitions
-// =====================================================================
-
-async function checkForMapEvents(player, currentMap, position, interaction) {
-  const connection = currentMap.connections?.find(
-    (conn) =>
-      conn.fromPosition.x === position.x && conn.fromPosition.y === position.y,
-  );
-
-  if (connection) await handleMapTransition(player, connection, interaction);
-}
-
-async function handleMapTransition(player, connection, interaction) {
-  try {
-    await player.changeMap(
-      connection.targetMapId,
-      connection.targetPosition || null,
-    );
-    await interaction.followUp({
-      content: "🚪 You have entered a new area...",
-      flags: MessageFlags.Ephemeral,
-    });
-  } catch (error) {
-    console.error("Map transition error:", error);
-    await interaction.followUp({
-      content:
-        "❌ Could not transition to the new area. Report this problem to the developers.",
-      flags: MessageFlags.Ephemeral,
-    });
-  }
-}
-
-// =====================================================================
-// Combat
-// =====================================================================
-
-async function handleCombat(
-  player,
-  currentMap,
-  position,
-  monsterType,
-  interaction,
-) {
-  try {
-    const combinedStats = calculateCombinedStats(player);
-
-    const monster = await monsterManager.getOrCreateMonster(
-      player.currentMapId,
-      position.x,
-      position.y,
-      monsterType,
-    );
-
-    const playerDamage = Math.max(1, combinedStats.attack - monster.defense);
-    const monsterDamage = Math.max(1, monster.attack - combinedStats.defense);
-
-    const updatedMonster = await monsterManager.damageMonster(
-      player.currentMapId,
-      position.x,
-      position.y,
-      playerDamage,
-    );
-
-    addCombatMessage(
-      player.userId,
-      `You hit ${monster.name} for ${playerDamage} HP!`,
-    );
-
-    player.currentHealth = Math.max(0, player.currentHealth - monsterDamage);
-    player.currentTarget = monster.name;
-    player.targetProgress = `${updatedMonster.currentHealth}/${updatedMonster.maxHealth}`;
-    player.targetPosition = position;
-
-    if (updatedMonster.isDead) {
-      player.experience += monster.experience;
-      player.gold += Math.floor(monster.experience / 2);
-      player.currentTarget = null;
-      player.targetProgress = "0/0";
-      player.targetPosition = null;
-      addCombatMessage(player.userId, `You defeated ${monster.name}!`);
-    } else {
-      addCombatMessage(
-        player.userId,
-        `${monster.name} hit you for ${monsterDamage} HP!`,
-      );
-    }
-
-    await player.save();
-
-    const refreshedMap = await MapModel.findOne({ mapId: player.currentMapId });
-    const refreshedStats = calculateCombinedStats(player);
-
-    await interaction.editReply({
-      embeds: [await createMainMapEmbed(player, refreshedStats, refreshedMap)],
-      components: await createNavigationButtons(
-        player,
-        refreshedMap,
-        interaction,
-      ),
-    });
-  } catch (error) {
-    console.error("Combat error:", error);
-    await interaction.followUp({
-      content:
-        "❌ Something went wrong with the combat. Please report this problem to the developers.",
-      flags: MessageFlags.Ephemeral,
-    });
-  }
-}
-
-function calculateDistance(pos1, pos2) {
-  return Math.abs(pos1.x - pos2.x) + Math.abs(pos1.y - pos2.y);
-}
-
-// =====================================================================
 // Periodic cleanup
 // =====================================================================
 
 setInterval(() => {
+  const now = Date.now();
+
   combatManager.cleanupOldCombats();
-  cleanupOldCombatMessages();
-}, 300000);
+
+  for (const [userId, entry] of combatMessagesMap) {
+    if (now - entry.lastTouched > COMBAT_MESSAGE_TTL) {
+      combatMessagesMap.delete(userId);
+    }
+  }
+
+  for (const [userId, entry] of bagSelectionMap) {
+    if (now - entry.touched > BAG_SELECTION_TTL) bagSelectionMap.delete(userId);
+  }
+}, 300000).unref();

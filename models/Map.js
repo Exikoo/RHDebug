@@ -44,6 +44,9 @@ const mapSchema = new mongoose.Schema(
       ],
       default: "overworld",
     },
+    // Seed used by utils/mapGenerator.js. null means the layout is
+    // hand-made / not yet generated (see utils/mapManager.js).
+    generationSeed: { type: Number, default: null },
     connections: [
       {
         direction: {

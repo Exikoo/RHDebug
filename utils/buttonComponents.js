@@ -1,5 +1,9 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
-import { monsterManager, MONSTER_TEMPLATES } from "../monsterManager.js";
+import {
+  monsterManager,
+  MONSTER_TEMPLATES,
+  monsterKey,
+} from "../monsterManager.js";
 import { isEnterable, orthogonalNeighbours } from "./mapUtils.js";
 import { getItemEmoji, EMPTY_SLOT_EMOJI } from "./itemDisplay.js";
 
@@ -21,40 +25,50 @@ export function isNearShop(player, currentMap) {
   return false;
 }
 
+const NO_DEAD_MONSTERS = new Set();
+
 /**
  * @param {Object} player
  * @param {Object} currentMap
  * @param {Object} interaction
+ * @param {Set<string>|null} [deadKeys] - "x,y" keys of dead monsters on this
+ *   map (see monsterManager.getDeadPositions). Pass it when you already have
+ *   it; otherwise it is fetched here — in a single query, and only if a
+ *   neighbouring tile actually holds a monster.
  * @returns {Promise<ActionRowBuilder[]>}
  */
-export async function createNavigationButtons(player, currentMap, interaction) {
+export async function createNavigationButtons(
+  player,
+  currentMap,
+  interaction,
+  deadKeys = null,
+) {
   const { x, y } = player.location;
   const mapData = currentMap.mapData;
 
-  const hasMonsterUp = await checkTileForMonster(
-    currentMap.mapId,
-    mapData,
-    x,
-    y - 1,
-  );
-  const hasMonsterDown = await checkTileForMonster(
-    currentMap.mapId,
-    mapData,
-    x,
-    y + 1,
-  );
-  const hasMonsterLeft = await checkTileForMonster(
-    currentMap.mapId,
-    mapData,
-    x - 1,
-    y,
-  );
-  const hasMonsterRight = await checkTileForMonster(
-    currentMap.mapId,
-    mapData,
-    x + 1,
-    y,
-  );
+  const up = { x, y: y - 1 };
+  const down = { x, y: y + 1 };
+  const left = { x: x - 1, y };
+  const right = { x: x + 1, y };
+  const neighbours = [up, down, left, right];
+
+  const isMonsterAt = (pos) =>
+    Boolean(MONSTER_TEMPLATES[mapData[pos.y]?.[pos.x]]);
+
+  let dead = deadKeys;
+  if (!dead) {
+    dead = neighbours.some(isMonsterAt)
+      ? await monsterManager.getDeadPositions(currentMap.mapId)
+      : NO_DEAD_MONSTERS;
+  }
+
+  const hasLiveMonster = (pos) =>
+    isMonsterAt(pos) && !dead.has(monsterKey(pos.x, pos.y));
+
+  const hasMonsterUp = hasLiveMonster(up);
+  const hasMonsterDown = hasLiveMonster(down);
+  const hasMonsterLeft = hasLiveMonster(left);
+  const hasMonsterRight = hasLiveMonster(right);
 
   const blockedUp = !isEnterable(mapData, x, y - 1);
   const blockedDown = !isEnterable(mapData, x, y + 1);
@@ -120,13 +134,6 @@ export async function createNavigationButtons(player, currentMap, interaction) {
   return [row1, row2, row3, row4];
 }
 
-async function checkTileForMonster(mapId, mapData, x, y) {
-  const tile = mapData[y]?.[x];
-  if (!MONSTER_TEMPLATES[tile]) return false;
-  const isDead = await monsterManager.isMonsterDead(mapId, x, y);
-  return !isDead;
-}
-
 /**
  * The "back to map" button on its own, so it can be dropped into a row
  * alongside other buttons (see createBagButtons) instead of always
@@ -136,7 +143,7 @@ async function checkTileForMonster(mapId, mapData, x, y) {
 export function createBackButtonComponent() {
   return new ButtonBuilder()
     .setCustomId("map_back_to_map")
-    .setLabel("⬅️ Back")
+    .setLabel("⬅️")
     .setStyle(ButtonStyle.Danger);
 }
 

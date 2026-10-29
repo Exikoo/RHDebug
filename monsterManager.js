@@ -24,6 +24,9 @@ const MONSTER_TEMPLATES = {
   },
 };
 
+/** Key format used for sets of monster positions: "x,y". */
+const monsterKey = (x, y) => `${x},${y}`;
+
 class MonsterManager {
   async getOrCreateMonster(mapId, x, y, monsterType) {
     let monster = await Monster.findOne({ mapId, x, y });
@@ -80,6 +83,61 @@ class MonsterManager {
     return monster ? monster.isDead : false;
   }
 
+  /**
+   * Positions of every dead monster on a map, in ONE query. Replaces the
+   * per-tile isMonsterDead() calls that rendering used to make.
+   * @param {string} mapId
+   * @returns {Promise<Set<string>>} Set of "x,y" keys (see monsterKey).
+   */
+  async getDeadPositions(mapId) {
+    const dead = await Monster.find({ mapId, isDead: true }, "x y").lean();
+    return new Set(dead.map((m) => monsterKey(m.x, m.y)));
+  }
+
+  /**
+   * Atomically applies damage to a monster by id. Unlike read-modify-save
+   * this can't lose hits when two players attack at once, and exactly one
+   * caller is told `killed: true` — so XP/gold can't be awarded twice.
+   *
+   * @param {import("mongoose").Types.ObjectId} monsterId
+   * @param {number} damage
+   * @returns {Promise<{monster: object|null, killed: boolean, alreadyDead: boolean}>}
+   */
+  async applyDamage(monsterId, damage) {
+    const hit = await Monster.findOneAndUpdate(
+      { _id: monsterId, isDead: false },
+      { $inc: { currentHealth: -damage } },
+      { returnDocument: "after" },
+    );
+
+    // Someone else finished it off between our read and this update.
+    if (!hit) {
+      return {
+        monster: await Monster.findById(monsterId),
+        killed: false,
+        alreadyDead: true,
+      };
+    }
+
+    if (hit.currentHealth > 0) {
+      return { monster: hit, killed: false, alreadyDead: false };
+    }
+
+    // Lethal hit: clamp to 0 and flag dead. The isDead:false filter means
+    // only one concurrent attacker can win this update.
+    const finished = await Monster.findOneAndUpdate(
+      { _id: monsterId, isDead: false },
+      { $set: { currentHealth: 0, isDead: true } },
+      { returnDocument: "after" },
+    );
+
+    return {
+      monster: finished ?? (await Monster.findById(monsterId)),
+      killed: Boolean(finished),
+      alreadyDead: !finished,
+    };
+  }
+
   async resetAllMonsters() {
     await Monster.updateMany(
       {},
@@ -111,4 +169,4 @@ class MonsterManager {
 
 const monsterManager = new MonsterManager();
 
-export { monsterManager, MONSTER_TEMPLATES };
+export { monsterManager, MONSTER_TEMPLATES, monsterKey };
