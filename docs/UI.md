@@ -107,30 +107,49 @@ the startup check lists exactly what is missing.
 
 ## Character screen
 
+Pixel-for-pixel copy of the reference sheet — the panel is 5 rows of buttons,
+so it uses every row Discord allows.
+
 ```
-Vlad's character                <- embed title
-```Character screen```          <- dark band
-🧍 **Vlad** — Human
-**Attributes** · Point left: 2
-```
-STR:   10
-INT:    3
-VIT:    8
-DMG:   16
-```
-**Talents** · Point left: 3
-Adventurer's Resolve 1 · Brute Force 2
+Hamzalopode's character            <- embed title
+```Character screen```             <- dark band
+[4 bag tiles]                      <- top strip: the first four items in the bag
+🧍 Hamzalopode Human
+**Attributes** - Point left: 3
+[bracket] STR:    10               <- red corner brackets down the list
+[bracket] INT:  5452
+[bracket] VIT:   727
+[bracket] DMG:     1
+**Talents** - Point left: 0
+Nothing
 **Gear**
-⚔️ 🛡️ ▫️                          <- one emoji per equip slot
-**Bags** 4/8
-🅱️ 🅱️ 🧪 ▫️ ▫️                    <- one emoji per bag slot
-**Lv. 3**   **HP** 118/131   **MP** 0/0
-XP 12/40
+      [armor] [sword] [amulet]     <- white glyphs, one per panel
+▫️▫️ ▫️ ▫️▫️                        <- equipped item in the first cell
+▫️▫️ ▫️ ▫️▫️
+**Bags**
+▫️▫️▫️▫️▫️
+                                    <- blank line
+**Hp** 1.0                          <- health potions carried
+**Lv. 1**   **HP**   **MP**
+_0 / 10_   _7545 / 7545_   _6 / 6_
+**Bag slots max**
+8
 ```
 
-Buttons: tab row (`map` / `character` / `talents` / `bag` / `Quit`), then
-`Add an attribute:` + `STR` `INT` `VIT`, then a green ✅ (back to map) and a
-red ❌ (quit) — the same two-button corner as the reference.
+The button panel, top to bottom:
+
+| Row | Buttons | Actions |
+| --- | --- | --- |
+| 1 | `Start` (green) · weapon · armour · accessory tiles · `Select` (green) | Start → map, tiles → ephemeral item card, Select → bag |
+| 2 | sheet tile (disabled) · ⭐ talents · 2 blanks · bag tile | navigation |
+| 3 | bone · 3 blanks · `Quit` (red) | bone drinks the first healing potion, Quit ends the run |
+| 4 | `Add an attribute:` (disabled) · `STR` `INT` `VIT` (blue) | spends one attribute point |
+| 5 | 3 blanks · ✅ · ❌ | ✅ → map, ❌ → quit |
+
+Gear is three panels side by side — 2×2 armour, 2×1 weapon, 2×2 accessory —
+one emoji per cell, so the grids line up whatever is equipped. Index 0 of each
+panel is the equipped item; until the slots exist in the profile the rest stay
+empty frames.
 
 Where the points come from: `POINTS_PER_LEVEL` in `config/talents.js` — one
 attribute point per level, one talent point every second level (both granted in
@@ -142,15 +161,15 @@ numbers; spent points are added on top of them, and only the spent part touches
 ## Talent screen
 
 ```
-Vlad's character
 ```Talent screen```
-**Points left:** 3
+[4 bag tiles]
+**Point left:** 3
 
-⠀⠀⠀🟨⠀⠀⠀          <- 5 rows x 7 cells, one emoji per cell
-⠀⠀⠀│⠀⠀⠀
-⠀⬛─⬛─⬛⠀
-⠀│⠀│⠀│⠀
-⠀⬛⠀⬛⠀⬛⠀
+ 4 ⠀⠀⠀🟨⠀⠀⠀          <- tier number on the left, 0 at the bottom
+ 3 ⠀⠀⠀│⠀⠀⠀
+ 2 ⠀⬛─⬛─⬛⠀
+ 1 ⠀│⠀│⠀│⠀
+ 0 ⠀⬛⠀⬛⠀⬛⠀
 
 **Talent description**
 **Brute Force** — rank 1/5
@@ -158,22 +177,23 @@ Vlad's character
 *Requires Adventurer's Resolve*
 ```
 
-Node states map to one emoji each: `talent_node_off` (blocked),
-`talent_node_available` (gold), `talent_node_on` (green), `talent_node_max`
-(white), `talent_node_focus` (the node being described). Connectors are
-`talent_link_h` / `talent_link_v`, empty cells are `talent_blank`; every one is
-a single emoji so the tree cannot shift.
+Node states map to one emoji each: `talent_node_off` (black cell, blocked),
+`talent_node_available` (dark red with a red ✕), `talent_node_on` (green),
+`talent_node_max` (gold frame), `talent_node_focus` (gold frame + ✕, the node
+being described). Connectors are the grey `talent_link_h` / `talent_link_v`,
+empty cells are the invisible `talent_blank`; every one is a single emoji so
+the tree cannot shift.
 
-The grid itself is `TREE_LAYOUT` in `config/talents.js` — `N` is a node, `-`
-and `|` are links, `.` is empty. Adding a talent means one entry in `TALENTS`
-plus the `id` in the matching cell; the renderer, the buttons, the prerequisite
-checks and the combat bonuses all read from that table. Bonuses are **derived**
-(`talentBonuses()`), never stored, so a respec or a save reload can never leave
-a stale number in the database.
+The grid is `TREE_LAYOUT` in `config/talents.js` — `N` is a node, `-` and `|`
+are links, `.` is empty; row 0 is printed at the bottom, like the game. Adding
+a talent means one entry in `TALENTS` plus its id in the matching cell: the
+renderer, the buttons, the prerequisite checks and the combat bonuses all read
+from that table. Bonuses are **derived** (`talentBonuses()`), never stored, so a
+respec or a reload can never leave a stale number in the database.
 
-The talent buttons are the 7 talents by short name (max 5 per row) plus
-`Learn`; the selected node is kept per user for five minutes so re-renders keep
-the description open.
+Panel: `Start` · three talent buttons · `Learn` (green), then four more talent
+buttons · the sheet tile, then `Quit`. The selected node is kept per user for
+five minutes so re-renders keep the description open.
 
 ## Gameplay bits that support the look
 

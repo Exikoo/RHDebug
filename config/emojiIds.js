@@ -27,8 +27,9 @@ export const SLOT_EMOJI_IDS = {
   slot_arrows: "1568278307877687417",
 };
 
-/** Talent tree + navigation chrome. */
+/** Talent tree, character sheet chrome and the panel button tiles. */
 export const UI_EMOJI_IDS = {
+  // talent tree
   talent_node_off: null,
   talent_node_available: null,
   talent_node_on: null,
@@ -37,7 +38,17 @@ export const UI_EMOJI_IDS = {
   talent_link_h: null,
   talent_link_v: null,
   talent_blank: null,
+  // tabs / panel buttons
   tab_talents: null,
+  tab_character: null,
+  ui_use: null,
+  ui_check: null,
+  ui_cross: null,
+  // character sheet decorations
+  attr_bracket: null,
+  gear_icon_armor: null,
+  gear_icon_weapon: null,
+  gear_icon_accessory: null,
 };
 
 export const EMOJI_GROUPS = {

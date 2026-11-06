@@ -36,6 +36,7 @@ import {
   isNearShop,
   createPlaceholderButton,
   createQuitButton,
+  BAG_EMOJI,
   createActionButtonDisabled,
   createRequestedByButton,
 } from "../../utils/buttonComponents.js";
@@ -43,6 +44,7 @@ import {
 import { LEGEND } from "../../config/mapConfig.js";
 import classes from "../../config/classes.js";
 import { TALENT_BY_ID } from "../../config/talents.js";
+import { customEmoji } from "../../config/emojiIds.js";
 import {
   learnTalent,
   spendAttributePoint,
@@ -205,6 +207,7 @@ const EXACT_HANDLERS = new Map([
   ["map_show_character", showCharacter],
   ["map_show_talents", showTalents],
   ["map_talent_learn", learnSelectedTalent],
+  ["map_use_potion", usePotion],
   ["map_show_actions", showActions],
   ["map_action_stairs", useStairs],
   ["map_action_shop", openShop],
@@ -215,6 +218,7 @@ const PREFIX_HANDLERS = [
   ["map_bag_slot_", selectBagSlot],
   ["map_talent_", selectTalent],
   ["map_attr_", spendAttribute],
+  ["map_gear_", showGearItem],
 ];
 
 function resolveHandler(customId) {
@@ -576,6 +580,10 @@ function getRecentCombatMessages(userId) {
 
 /**
  * Character screen: attributes, talents, gear, bags and vitals.
+ *
+ * Everything it needs comes from the item cache plus the memoized combined
+ * stats, so a press costs one profile read and no populates.
+ *
  * @param {Ctx} ctx
  */
 async function showCharacter(ctx) {
@@ -583,32 +591,120 @@ async function showCharacter(ctx) {
 
   const [stats, items] = await Promise.all([ctx.stats(), getItemMap()]);
 
-  // Gear and bag icons come from the item cache: no populate queries.
-  const gear = ["weapon", "armor", "accessory"].map((slot) => ({
-    slot,
-    item: items.get(idOf(player.equipped?.[slot])) ?? null,
+  const itemFor = (ref) => items.get(idOf(ref)) ?? null;
+  const emojiFor = (item) => (item ? getItemEmoji(item) : EMPTY_SLOT_EMOJI);
+
+  const weapon = itemFor(player.equipped?.weapon);
+  const armor = itemFor(player.equipped?.armor);
+  const accessory = itemFor(player.equipped?.accessory);
+
+  const inventory = (player.inventory ?? []).map((slot) => ({
+    item: itemFor(slot.item),
+    quantity: slot.quantity ?? 1,
   }));
+  const healers = inventory.filter(
+    (slot) => slot.item?.type === "consumable" && (slot.item.stats?.health ?? 0) > 0,
+  );
+  const potions = healers.reduce((total, slot) => total + slot.quantity, 0);
 
-  const bagIcons = (player.inventory ?? []).map((slot) => {
-    const item = items.get(idOf(slot.item));
-    return item ? getItemEmoji(item) : EMPTY_SLOT_EMOJI;
-  });
-
-  const classAttributes =
-    classes[String(player.class ?? "").toLowerCase()]?.attributes ?? {};
+  // Top strip = the first four things in the bag, like the reference.
+  const quick = inventory
+    .slice(0, 4)
+    .map((slot) => (slot.item ? getItemEmoji(slot.item) : EMPTY_SLOT_EMOJI));
 
   return interaction.editReply({
     embeds: [
       generateCharacterDisplay({
         player,
         stats,
-        gear,
-        bagIcons,
-        classAttributes,
+        gear: {
+          armor: [emojiFor(armor), EMPTY_SLOT_EMOJI, EMPTY_SLOT_EMOJI, EMPTY_SLOT_EMOJI],
+          weapon: [emojiFor(weapon), EMPTY_SLOT_EMOJI],
+          accessory: [emojiFor(accessory), EMPTY_SLOT_EMOJI, EMPTY_SLOT_EMOJI, EMPTY_SLOT_EMOJI],
+        },
+        bags: inventory.map((slot) => (slot.item ? getItemEmoji(slot.item) : EMPTY_SLOT_EMOJI)),
+        quickBar: quick,
+        classAttributes:
+          classes[String(player.class ?? "").toLowerCase()]?.attributes ?? {},
+        potions,
       }),
     ],
-    components: createCharacterButtons(player),
+    components: createCharacterButtons(player, {
+      gear: [emojiFor(weapon), emojiFor(armor), emojiFor(accessory)],
+      bag: BAG_EMOJI,
+      use: customEmoji("ui_use", "🦴"),
+    }),
   });
+}
+
+/**
+ * Gear button: shows what is equipped in that slot without leaving the sheet.
+ * @param {Ctx} ctx
+ */
+async function showGearItem(ctx) {
+  const slot = ctx.interaction.customId.slice("map_gear_".length);
+  if (!["weapon", "armor", "accessory"].includes(slot)) {
+    return ctx.interaction.followUp({ content: "❌ Unknown slot.", flags: EPHEMERAL });
+  }
+
+  const items = await getItemMap();
+  const item = items.get(idOf(ctx.player.equipped?.[slot]));
+  if (!item) {
+    return ctx.interaction.followUp({
+      content: `❌ Nothing equipped in your ${slot} slot.`,
+      flags: EPHEMERAL,
+    });
+  }
+
+  const stats = Object.entries(item.stats ?? {})
+    .map(([key, value]) => `+${value} ${key}`)
+    .join(", ");
+
+  return ctx.interaction.followUp({
+    content: [
+      `**${item.name}** (${slot})`,
+      item.description ?? "*No description.*",
+      stats ? `> ${stats}` : "> No stat bonus",
+    ].join("\n"),
+    flags: EPHEMERAL,
+  });
+}
+
+/**
+ * The bone button: drinks the first healing potion in the bag.
+ * @param {Ctx} ctx
+ */
+async function usePotion(ctx) {
+  const { player, interaction } = ctx;
+
+  // Resolve the potion from the item cache (no populate); `useItem` loads the
+  // document itself when the slot still holds a raw id.
+  const items = await getItemMap();
+  const index = (player.inventory ?? []).findIndex((slot) => {
+    const item = items.get(idOf(slot.item));
+    return item?.type === "consumable" && (item.stats?.health ?? 0) > 0;
+  });
+
+  if (index === -1) {
+    return interaction.followUp({
+      content: "❌ You have no healing potion left.",
+      flags: EPHEMERAL,
+    });
+  }
+
+  try {
+    const message = await player.useItem(index);
+    await player.save();
+    return Promise.all([
+      showCharacter(ctx),
+      interaction.followUp({ content: `🧪 ${message}`, flags: EPHEMERAL }),
+    ]);
+  } catch (error) {
+    return interaction.followUp({
+      content: `❌ Error: ${error.message}`,
+      flags: EPHEMERAL,
+    });
+  }
 }
 
 /**
@@ -618,9 +714,22 @@ async function showCharacter(ctx) {
  */
 async function showTalents(ctx) {
   const selectedId = getTalentSelection(ctx.userId);
+  const items = await getItemMap();
+  const emojiFor = (ref) => {
+    const item = items.get(idOf(ref));
+    return item ? getItemEmoji(item) : EMPTY_SLOT_EMOJI;
+  };
 
   return ctx.interaction.editReply({
-    embeds: [generateTalentDisplay({ player: ctx.player, selectedId })],
+    embeds: [
+      generateTalentDisplay({
+        player: ctx.player,
+        selectedId,
+        quickBar: (ctx.player.inventory ?? [])
+          .slice(0, 4)
+          .map((slot) => emojiFor(slot.item)),
+      }),
+    ],
     components: createTalentButtons(ctx.player, selectedId),
   });
 }
