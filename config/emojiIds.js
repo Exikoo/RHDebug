@@ -37,7 +37,17 @@ export const UI_EMOJI_IDS = {
   talent_link_h: "1568284084172759222",
   talent_link_v: "1568284086035030106",
   talent_blank: "1568284087188463807",
+  // tabs / panel buttons
   tab_talents: "1568284088417128508",
+  tab_character: null,
+  ui_use: null,
+  ui_check: null,
+  ui_cross: null,
+  // character sheet decorations
+  attr_bracket: null,
+  gear_icon_armor: null,
+  gear_icon_weapon: null,
+  gear_icon_accessory: null,
 };
 
 export const EMOJI_GROUPS = {
