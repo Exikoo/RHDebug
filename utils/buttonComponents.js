@@ -6,6 +6,9 @@ import {
 } from "../monsterManager.js";
 import { isEnterable, orthogonalNeighbours } from "./mapUtils.js";
 import { getItemEmoji, EMPTY_SLOT_EMOJI } from "./itemDisplay.js";
+import { customEmoji } from "../config/emojiIds.js";
+import { ATTRIBUTE_EFFECTS, ATTRIBUTE_KEYS, TALENT_ORDER, TALENT_BY_ID } from "../config/talents.js";
+import { nodeEmoji, talentState } from "./talents.js";
 
 /**
  * @param {Object} player
@@ -101,25 +104,26 @@ export async function createNavigationButtons(
 
   const row2 = new ActionRowBuilder().addComponents(
     createActionButtonEmoji(
-      "map_show_stats",
+      "map_show_character",
       ButtonStyle.Secondary,
       "<:bookstats:1415349972043563125>",
     ),
-    createPlaceholderButton("map_placeholder_6"),
+    createActionButtonEmoji(
+      "map_show_talents",
+      ButtonStyle.Secondary,
+      customEmoji("tab_talents", "⭐"),
+    ),
     createDirectionButton("map_move_up", "⬆️", hasMonsterUp, blockedUp),
     createPlaceholderButton("map_placeholder_7"),
-    createActionButtonEmoji(
-      "map_show_actions",
-      ButtonStyle.Secondary,
-      "<:bag:1415345981200928940>",
-    ),
+    // Stairs / tile actions. The shop gets its own button in row 1.
+    createActionButtonEmoji("map_show_actions", ButtonStyle.Secondary, "🪜"),
   );
 
   const row3 = new ActionRowBuilder().addComponents(
     createActionButtonEmoji(
       "map_show_inventory",
       ButtonStyle.Secondary,
-      "<:mini_map_icon:1415348946892623892>",
+      "<:bag:1415345981200928940>",
     ),
     createDirectionButton("map_move_left", "⬅️", hasMonsterLeft, blockedLeft),
     createDirectionButton("map_move_down", "⬇️", hasMonsterDown, blockedDown),
@@ -362,4 +366,128 @@ export function createBagButtons(playerProfile, selectedIndex = null) {
   row3.addComponents(createQuitButton());
 
   return [row1, row2, row3];
+}
+
+// =====================================================================
+// Tabbed screens (character / talents / bag share this navigation)
+// =====================================================================
+
+const TAB_ICONS = {
+  map: "<:mini_map_icon:1415348946892623892>",
+  character: "<:bookstats:1415349972043563125>",
+  talents: customEmoji("tab_talents", "⭐"),
+  bag: "<:bag:1415345981200928940>",
+};
+
+const TABS = [
+  { key: "map", customId: "map_back_to_map" },
+  { key: "character", customId: "map_show_character" },
+  { key: "talents", customId: "map_show_talents" },
+  { key: "bag", customId: "map_show_inventory" },
+];
+
+/**
+ * Row 1 of every panel: jump between map / character / talents / bag.
+ * The current tab is shown selected and disabled so it reads as "you are here".
+ * @param {"map"|"character"|"talents"|"bag"} active
+ * @returns {ActionRowBuilder}
+ */
+export function createTabRow(active) {
+  const buttons = TABS.map(({ key, customId }) =>
+    new ButtonBuilder()
+      .setCustomId(customId)
+      .setEmoji(TAB_ICONS[key])
+      .setStyle(key === active ? ButtonStyle.Primary : ButtonStyle.Secondary)
+      .setDisabled(key === active),
+  );
+
+  buttons.push(createQuitButton());
+  return new ActionRowBuilder().addComponents(...buttons);
+}
+
+/**
+ * Character screen controls: the tab row plus "Add an attribute" buttons.
+ * @param {Object} playerProfile
+ * @returns {ActionRowBuilder[]}
+ */
+export function createCharacterButtons(playerProfile) {
+  const points = playerProfile.attributePoints ?? 0;
+
+  const attributeRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("map_attr_label")
+      .setLabel("Add an attribute:")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(true),
+    ...ATTRIBUTE_KEYS.map((key) =>
+      new ButtonBuilder()
+        .setCustomId(`map_attr_${key}`)
+        .setLabel(ATTRIBUTE_EFFECTS[key].short)
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(points < 1),
+    ),
+    createPlaceholderButton("map_attr_placeholder"),
+  );
+
+  // Green check = back to the map, red cross = quit (mirrors the game).
+  const confirmRow = new ActionRowBuilder().addComponents(
+    createPlaceholderButton("map_char_pad_1"),
+    createPlaceholderButton("map_char_pad_2"),
+    new ButtonBuilder()
+      .setCustomId("map_back_to_map")
+      .setEmoji("✅")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId("map_quit")
+      .setEmoji("❌")
+      .setStyle(ButtonStyle.Danger),
+  );
+
+  return [createTabRow("character"), attributeRow, confirmRow];
+}
+
+/**
+ * Talent screen controls: the tab row, a button per talent (showing its
+ * state emoji) and a Learn button for the highlighted one.
+ *
+ * @param {Object} playerProfile
+ * @param {string|null} selectedId
+ * @returns {ActionRowBuilder[]}
+ */
+export function createTalentButtons(playerProfile, selectedId = null) {
+  const buttons = TALENT_ORDER.map(
+    (id) =>
+      new ButtonBuilder()
+        .setCustomId(`map_talent_${id}`)
+        .setLabel(TALENT_BY_ID.get(id)?.short ?? id)
+        .setEmoji(
+          nodeEmoji(
+            id === selectedId
+              ? "focus"
+              : talentState(playerProfile, TALENT_BY_ID.get(id)),
+          ),
+        )
+        .setStyle(
+          id === selectedId ? ButtonStyle.Primary : ButtonStyle.Secondary,
+        ),
+  );
+
+  const learn = new ButtonBuilder()
+    .setCustomId("map_talent_learn")
+    .setLabel("Learn")
+    .setStyle(ButtonStyle.Success)
+    .setDisabled(
+      !selectedId || (playerProfile.talentPoints ?? 0) < 1,
+    );
+
+  return [
+    createTabRow("talents"),
+    new ActionRowBuilder().addComponents(...buttons.slice(0, 5)),
+    new ActionRowBuilder().addComponents(
+      ...buttons.slice(5),
+      learn,
+      createPlaceholderButton("map_talent_pad_1"),
+      createPlaceholderButton("map_talent_pad_2"),
+    ),
+  ];
 }

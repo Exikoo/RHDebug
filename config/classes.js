@@ -3,6 +3,7 @@ export default {
     displayName: "Warrior",
     description: "A strong melee fighter with high defense",
     baseStats: { health: 120, attack: 8, defense: 6, speed: 4, magic: 0 },
+    attributes: { str: 10, int: 3, vit: 8 },
     starterKit: {
       weapon: "warrior_sword",
       armor: "warrior_armor",
@@ -17,6 +18,7 @@ export default {
     displayName: "Mage",
     description: "A spellcaster with powerful magical abilities",
     baseStats: { health: 80, attack: 4, defense: 3, speed: 5, magic: 8 },
+    attributes: { str: 4, int: 11, vit: 6 },
     starterKit: {
       weapon: "mage_staff",
       armor: "mage_robe",
@@ -31,6 +33,7 @@ export default {
     displayName: "Archer",
     description: "A agile ranged combatant with quick reflexes",
     baseStats: { health: 100, attack: 7, defense: 5, speed: 7, magic: 2 },
+    attributes: { str: 8, int: 6, vit: 7 },
     starterKit: {
       weapon: "ranger_bow",
       armor: "ranger_leather",

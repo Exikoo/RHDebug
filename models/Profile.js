@@ -52,6 +52,16 @@ const profileSchema = new mongoose.Schema(
       magic: { type: Number, default: 0, min: 0 },
     },
     gold: { type: Number, default: 50, min: 0 },
+    // Attribute points spent (class base values live in config/classes.js).
+    attributes: {
+      str: { type: Number, default: 0, min: 0 },
+      int: { type: Number, default: 0, min: 0 },
+      vit: { type: Number, default: 0, min: 0 },
+    },
+    attributePoints: { type: Number, default: 3, min: 0 },
+    talentPoints: { type: Number, default: 1, min: 0 },
+    // talentId -> rank; everything else about talents is derived.
+    talents: { type: Map, of: Number, default: () => new Map() },
     equipped: {
       weapon: { type: mongoose.Schema.Types.ObjectId, ref: "Item" },
       armor: { type: mongoose.Schema.Types.ObjectId, ref: "Item" },

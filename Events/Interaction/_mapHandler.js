@@ -22,13 +22,16 @@ import { replyError } from "../../utils/errorHandler.js";
 
 import {
   generateBagDisplay,
-  generateStatsDisplay,
+  generateCharacterDisplay,
+  generateTalentDisplay,
 } from "../../utils/menuDisplays.js";
 
 import {
   createNavigationButtons,
   createBackButton,
   createBagButtons,
+  createCharacterButtons,
+  createTalentButtons,
   createTileActionButtons,
   isNearShop,
   createPlaceholderButton,
@@ -38,6 +41,13 @@ import {
 } from "../../utils/buttonComponents.js";
 
 import { LEGEND } from "../../config/mapConfig.js";
+import classes from "../../config/classes.js";
+import { TALENT_BY_ID } from "../../config/talents.js";
+import {
+  learnTalent,
+  spendAttributePoint,
+} from "../../utils/talents.js";
+import { getItemEmoji, EMPTY_SLOT_EMOJI } from "../../utils/itemDisplay.js";
 import { addExperience, clampVitals } from "../../utils/progression.js";
 import { COLORS } from "../../utils/uiTheme.js";
 
@@ -91,6 +101,15 @@ const combatMessagesMap = new Map();
 const bagSelectionMap = new Map();
 
 const getBagSelection = (userId) => bagSelectionMap.get(userId)?.index ?? null;
+
+/**
+ * Which talent node the user is looking at on the talent screen.
+ * @type {Map<string, {id: string, touched: number}>}
+ */
+const talentSelectionMap = new Map();
+const getTalentSelection = (userId) => talentSelectionMap.get(userId)?.id ?? null;
+const setTalentSelection = (userId, id) =>
+  talentSelectionMap.set(userId, { id, touched: Date.now() });
 const clearBagSelection = (userId) => bagSelectionMap.delete(userId);
 const setBagSelection = (userId, index) =>
   bagSelectionMap.set(userId, { index, touched: Date.now() });
@@ -182,7 +201,10 @@ const EXACT_HANDLERS = new Map([
   ["map_bag_select", (ctx) => runBagAction(ctx, "🛡️", equipSelected)],
   ["map_bag_preview", showSelectedBagSlot],
   ["map_bag_trash", (ctx) => runBagAction(ctx, "🗑️", trashSelected)],
-  ["map_show_stats", showStats],
+  ["map_show_stats", showCharacter],
+  ["map_show_character", showCharacter],
+  ["map_show_talents", showTalents],
+  ["map_talent_learn", learnSelectedTalent],
   ["map_show_actions", showActions],
   ["map_action_stairs", useStairs],
   ["map_action_shop", openShop],
@@ -191,6 +213,8 @@ const EXACT_HANDLERS = new Map([
 const PREFIX_HANDLERS = [
   ["map_move_", handleMove],
   ["map_bag_slot_", selectBagSlot],
+  ["map_talent_", selectTalent],
+  ["map_attr_", spendAttribute],
 ];
 
 function resolveHandler(customId) {
@@ -550,40 +574,95 @@ function getRecentCombatMessages(userId) {
 // Stats / actions / stairs / shop
 // =====================================================================
 
-/** @param {Ctx} ctx */
-async function showStats(ctx) {
+/**
+ * Character screen: attributes, talents, gear, bags and vitals.
+ * @param {Ctx} ctx
+ */
+async function showCharacter(ctx) {
   const { player, interaction } = ctx;
 
   const [stats, items] = await Promise.all([ctx.stats(), getItemMap()]);
 
-  // Resolve the paper doll from the item cache: no populate queries, and
-  // the sheet shows exactly what the map sprite is wearing.
-  const equipment = ["weapon", "armor", "accessory"].map((slot) => ({
+  // Gear and bag icons come from the item cache: no populate queries.
+  const gear = ["weapon", "armor", "accessory"].map((slot) => ({
     slot,
     item: items.get(idOf(player.equipped?.[slot])) ?? null,
   }));
 
-  // generateStatsDisplay reads `totalStats`; hand it the cache-derived
-  // value so equipment bonuses show up without populating the profile.
-  const view = {
-    username: player.username,
-    level: player.level,
-    class: player.class,
-    race: player.race,
-    gender: player.gender,
-    difficulty: player.difficulty,
-    experience: player.experience,
-    totalStats: stats,
-    currentHealth: player.currentHealth,
-    currentMana: player.currentMana,
-    gold: player.gold,
-    equipment,
-  };
+  const bagIcons = (player.inventory ?? []).map((slot) => {
+    const item = items.get(idOf(slot.item));
+    return item ? getItemEmoji(item) : EMPTY_SLOT_EMOJI;
+  });
+
+  const classAttributes =
+    classes[String(player.class ?? "").toLowerCase()]?.attributes ?? {};
 
   return interaction.editReply({
-    embeds: [generateStatsDisplay(view)],
-    components: [createBackButton()],
+    embeds: [
+      generateCharacterDisplay({
+        player,
+        stats,
+        gear,
+        bagIcons,
+        classAttributes,
+      }),
+    ],
+    components: createCharacterButtons(player),
   });
+}
+
+/**
+ * Talent screen. The highlighted node is kept per user so the description
+ * survives re-renders (and so "Learn" knows what to spend on).
+ * @param {Ctx} ctx
+ */
+async function showTalents(ctx) {
+  const selectedId = getTalentSelection(ctx.userId);
+
+  return ctx.interaction.editReply({
+    embeds: [generateTalentDisplay({ player: ctx.player, selectedId })],
+    components: createTalentButtons(ctx.player, selectedId),
+  });
+}
+
+/** @param {Ctx} ctx */
+async function selectTalent(ctx) {
+  const id = ctx.interaction.customId.slice("map_talent_".length);
+
+  if (TALENT_BY_ID.has(id)) setTalentSelection(ctx.userId, id);
+  return showTalents(ctx);
+}
+
+/** @param {Ctx} ctx */
+async function learnSelectedTalent(ctx) {
+  const id = getTalentSelection(ctx.userId);
+  if (!id) return showTalents(ctx);
+
+  const result = learnTalent(ctx.player, id);
+  if (result.ok) await ctx.player.save();
+
+  return Promise.all([
+    showTalents(ctx),
+    ctx.interaction.followUp({ content: result.message, flags: EPHEMERAL }),
+  ]);
+}
+
+/** @param {Ctx} ctx */
+async function spendAttribute(ctx) {
+  const key = ctx.interaction.customId.slice("map_attr_".length);
+  const result = spendAttributePoint(ctx.player, key);
+  if (result.ok) await ctx.player.save();
+
+  // The stats memo is per-press; rebuild it so the new point shows up now.
+  const fresh = {
+    ...ctx,
+    stats: () => getCombinedStats(ctx.player),
+  };
+
+  return Promise.all([
+    showCharacter(fresh),
+    ctx.interaction.followUp({ content: result.message, flags: EPHEMERAL }),
+  ]);
 }
 
 /** @param {Ctx} ctx */
@@ -896,5 +975,9 @@ setInterval(() => {
 
   for (const [userId, entry] of bagSelectionMap) {
     if (now - entry.touched > BAG_SELECTION_TTL) bagSelectionMap.delete(userId);
+  }
+
+  for (const [userId, entry] of talentSelectionMap) {
+    if (now - entry.touched > BAG_SELECTION_TTL) talentSelectionMap.delete(userId);
   }
 }, 300000).unref();

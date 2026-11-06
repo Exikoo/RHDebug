@@ -1,21 +1,18 @@
 /**
- * Custom emoji IDs used by the bag screen.
+ * Custom emoji IDs used by the game screens.
  *
- * The PNGs live in `docs/emojis/` (128×128, built from `tileset/`): every
- * filled slot is the `misc/slot.png` frame with the item art inset, so one
- * emoji = one cell, exactly like the reference screen.
+ * The PNGs live in `docs/emojis/` and are generated from `tileset/` (bag
+ * cells) or drawn as UI chrome (talent tree). Every lookup falls back to a
+ * unicode glyph, so screens keep working before the uploads are done.
  *
  * To enable them:
- *   1. Discord Developer Portal → your application → Emojis → upload the
- *      files from `docs/emojis/`, keeping the file name as the emoji name.
- *   2. Paste each emoji's ID below (right-click → Copy Emoji ID).
- *
- * Anything left as `null` falls back to a unicode glyph, so the bag keeps
- * working while the uploads are pending — the startup emoji check lists
- * whatever is still missing.
+ *   1. `/emojis upload` (administrator) — uploads everything in docs/emojis
+ *      and prints this file's contents, or upload them by hand in the
+ *      Developer Portal → your application → Emojis.
+ *   2. Paste the printed block below.
  */
 
-/** @type {Record<string, string|null>} */
+/** Bag cells: `slot_empty` + one `slot_<itemId>` per item in config/items.js. */
 export const SLOT_EMOJI_IDS = {
   slot_empty: "1415418095123697817",
   slot_warrior_sword: "1568277099196842054",
@@ -30,8 +27,34 @@ export const SLOT_EMOJI_IDS = {
   slot_arrows: "1568278307877687417",
 };
 
+/** Talent tree + navigation chrome. */
+export const UI_EMOJI_IDS = {
+  talent_node_off: null,
+  talent_node_available: null,
+  talent_node_on: null,
+  talent_node_max: null,
+  talent_node_focus: null,
+  talent_link_h: null,
+  talent_link_v: null,
+  talent_blank: null,
+  tab_talents: null,
+};
+
+export const EMOJI_GROUPS = {
+  bag: SLOT_EMOJI_IDS,
+  ui: UI_EMOJI_IDS,
+};
+
 /** A Discord snowflake: 17-20 digits, but be lenient about the exact length. */
 const VALID_ID = /^\d{15,25}$/;
+
+/**
+ * @param {string|null|undefined} id
+ * @returns {boolean}
+ */
+function isValidId(id) {
+  return Boolean(id) && VALID_ID.test(String(id).trim());
+}
 
 /**
  * Builds `<:name:id>` markup, or returns the fallback when the ID has not
@@ -43,17 +66,39 @@ const VALID_ID = /^\d{15,25}$/;
  * @returns {string|null}
  */
 export function customEmoji(name, fallback = null) {
-  const id = SLOT_EMOJI_IDS[name];
-  if (!id || !VALID_ID.test(String(id).trim())) return fallback;
-  return `<:${name}:${String(id).trim()}>`;
+  for (const group of Object.values(EMOJI_GROUPS)) {
+    if (!Object.hasOwn(group, name)) continue;
+    const id = group[name];
+    if (!isValidId(id)) return fallback;
+    return `<:${name}:${String(id).trim()}>`;
+  }
+  return fallback;
+}
+
+/** Every emoji name the code knows about (upload list). */
+export function allEmojiNames() {
+  return Object.values(EMOJI_GROUPS).flatMap((group) => Object.keys(group));
 }
 
 /**
- * Emoji names that still need an upload/paste.
+ * Emoji names that still need an upload/ID.
+ * @param {"bag"|"ui"|"all"} [scope]
  * @returns {string[]}
  */
+export function pendingEmojis(scope = "all") {
+  const groups =
+    scope === "all"
+      ? Object.values(EMOJI_GROUPS)
+      : [EMOJI_GROUPS[scope]].filter(Boolean);
+
+  return groups.flatMap((group) =>
+    Object.entries(group)
+      .filter(([, id]) => !isValidId(id))
+      .map(([name]) => name),
+  );
+}
+
+/** Kept for the bag-specific startup warning. */
 export function pendingSlotEmojis() {
-  return Object.entries(SLOT_EMOJI_IDS)
-    .filter(([, id]) => !id || !VALID_ID.test(String(id).trim()))
-    .map(([name]) => name);
+  return pendingEmojis("bag");
 }

@@ -2,18 +2,23 @@ import {
   SlashCommandBuilder,
   PermissionFlagsBits,
   MessageFlags,
+  AttachmentBuilder,
 } from "discord.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { SLOT_EMOJI_IDS } from "../../config/emojiIds.js";
+import {
+  EMOJI_GROUPS,
+  allEmojiNames,
+  pendingEmojis,
+} from "../../config/emojiIds.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EMOJI_DIR = path.resolve(__dirname, "../../docs/emojis");
 
-/** Names the bot expects, derived from config/emojiIds.js. */
-const REQUIRED = Object.keys(SLOT_EMOJI_IDS);
+/** Every emoji name the bot expects, from config/emojiIds.js. */
+const REQUIRED = allEmojiNames();
 
 /** Safe message length for an ephemeral reply. */
 const MAX_CONTENT = 1900;
@@ -32,20 +37,24 @@ function availableFiles() {
 }
 
 /**
- * Builds the exact block to paste into config/emojiIds.js.
+ * Builds the exact blocks to paste into config/emojiIds.js.
  * @param {Map<string, string>} idByName
  * @returns {string}
  */
 function configSnippet(idByName) {
-  const lines = REQUIRED.map((name) => {
-    const id = idByName.get(name);
-    return `  ${name}: ${id ? `"${id}"` : "null"},`;
-  });
+  const serialize = (exportName, group) =>
+    [
+      `export const ${exportName} = {`,
+      ...Object.keys(group).map(
+        (name) => `  ${name}: ${idByName.has(name) ? `"${idByName.get(name)}"` : "null"},`,
+      ),
+      "};",
+    ].join("\n");
 
   return [
-    "export const SLOT_EMOJI_IDS = {",
-    ...lines,
-    "};",
+    serialize("SLOT_EMOJI_IDS", EMOJI_GROUPS.bag),
+    "",
+    serialize("UI_EMOJI_IDS", EMOJI_GROUPS.ui),
   ].join("\n");
 }
 
@@ -119,27 +128,40 @@ export default {
 
     const missing = REQUIRED.filter((name) => !idByName.has(name));
     const configured = REQUIRED.filter((name) => {
-      const id = SLOT_EMOJI_IDS[name];
-      return id && id === idByName.get(name);
+      for (const group of Object.values(EMOJI_GROUPS)) {
+        if (name in group) return group[name] === idByName.get(name);
+      }
+      return false;
     });
+    const unset = pendingEmojis();
 
     const summary = [
-      `**Bag emojis** — ${configured.length}/${REQUIRED.length} configured`,
+      `**Game emojis** — ${configured.length}/${REQUIRED.length} configured`,
       missing.length > 0
-        ? `> Missing from the application: ${missing.join(", ")}`
-        : "> All 11 emojis exist ✓",
+        ? `> Not uploaded yet: ${missing.join(", ")}`
+        : `> All ${REQUIRED.length} emojis exist ✓`,
+      unset.length > 0
+        ? `> Not pasted into config/emojiIds.js: ${unset.length}`
+        : "> config/emojiIds.js is complete ✓",
       `> PNGs found in docs/emojis: ${availableFiles().length}/${REQUIRED.length}`,
       ...notes.map((note) => `> ${note}`),
     ].join("\n");
 
-    const snippet = `\`\`\`js\n${configSnippet(idByName)}\n\`\`\``;
-    const content = `${summary}\n\nPaste into \`config/emojiIds.js\`, then restart:\n${snippet}`;
+    const snippet = configSnippet(idByName);
+    const content = `${summary}\n\nPaste into \`config/emojiIds.js\` (replace both objects), then restart:\n\`\`\`js\n${snippet}\n\`\`\``;
+
+    // Long snippets get an attached copy so nothing is cut off in chat.
+    const files =
+      content.length > MAX_CONTENT
+        ? [new AttachmentBuilder(Buffer.from(snippet, "utf8"), { name: "emojiIds.snippet.js" })]
+        : [];
 
     return interaction.editReply({
       content:
         content.length > MAX_CONTENT
-          ? `${content.slice(0, MAX_CONTENT)}…`
+          ? `${summary}\n\nSnippet attached (\`emojiIds.snippet.js\`) — paste both objects into \`config/emojiIds.js\`.`
           : content,
+      files,
     });
   },
 };
