@@ -94,15 +94,18 @@ export function nodeEmoji(state) {
  *
  * @param {any} player
  * @param {string|null} selectedId Talent whose description is on screen.
+ * @param {{tiers?: boolean}} [options] `tiers` prints the tier number on the
+ *   left of every row, bottom row = tier 0, like the reference screen.
  * @returns {string[]}
  */
-export function renderTalentTree(player, selectedId = null) {
+export function renderTalentTree(player, selectedId = null, options = {}) {
   const blank = customEmoji("talent_blank", "\u2800");
   const linkH = customEmoji("talent_link_h", "─");
   const linkV = customEmoji("talent_link_v", "│");
+  const lastTier = TREE_LAYOUT.length - 1;
 
-  return TREE_LAYOUT.map((line, row) =>
-    [...line]
+  return TREE_LAYOUT.map((line, row) => {
+    const rendered = [...line]
       .map((cell, col) => {
         if (cell === "-") return linkH;
         if (cell === "|") return linkV;
@@ -114,8 +117,11 @@ export function renderTalentTree(player, selectedId = null) {
           talent.id === selectedId ? "focus" : talentState(player, talent),
         );
       })
-      .join(""),
-  );
+      .join("");
+
+    if (!options.tiers) return rendered;
+    return `${String(lastTier - row).padStart(2)} ${rendered}`;
+  });
 }
 
 /**

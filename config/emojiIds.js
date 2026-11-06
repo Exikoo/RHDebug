@@ -27,7 +27,7 @@ export const SLOT_EMOJI_IDS = {
   slot_arrows: "1568278307877687417",
 };
 
-/** Talent tree + navigation chrome. */
+/** Talent tree, character sheet chrome and the panel button tiles. */
 export const UI_EMOJI_IDS = {
   talent_node_off: "1568284077851680920",
   talent_node_available: "1568284079403704320",

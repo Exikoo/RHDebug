@@ -1,7 +1,11 @@
 # Emojis to upload
 
-Two sets, both generated from `tileset/` and both named `slot_*` / `talent_*`
-so the code can find them without any extra mapping. 20 files in total.
+Three sets, all generated from `tileset/` (or drawn as UI chrome) and named
+`slot_*` / `talent_*` / chrome names, so the code finds them without any extra
+mapping. **28 files in total.**
+
+Preview of the 17 character-sheet + talent-screen ones:
+[`preview-ui.png`](preview-ui.png).
 
 ## Bag emojis — upload list
 
@@ -42,8 +46,7 @@ output     = 32x32 → 128x128 nearest-neighbour, transparent background
 
 # Talent / character emojis — upload list
 
-Nine 128×128 PNGs for the character and talent screens. Preview:
-[`preview-talents.png`](preview-talents.png).
+Nine 128×128 PNGs for the talent screen. Preview: [`preview-ui.png`](preview-ui.png).
 
 | # | File to upload | Emoji name | Used for | Art |
 | --- | --- | --- | --- | --- |
@@ -62,6 +65,25 @@ shape no matter which node state it is in. Uploading all nine is what makes
 the tree look like the reference; without them it falls back to
 ⬛ / 🟨 / 🟩 / ⬜ / ⭐ and still works.
 
+# Character sheet emojis — upload list
+
+The eight tiles that build the character panel (8, 9, … keep numbering).
+
+| # | File to upload | Emoji name | Used for |
+| --- | --- | --- | --- |
+| 21 | `tab_character.png` | `tab_character` | gold "II" sheet button (row 2, left) |
+| 22 | `ui_use.png` | `ui_use` | bone = "drink a healing potion" button |
+| 23 | `ui_check.png` | `ui_check` | green ✅ confirm tile (row 5) |
+| 24 | `ui_cross.png` | `ui_cross` | red ❌ cancel tile (row 5) |
+| 25 | `attr_bracket.png` | `attr_bracket` | red corner brackets down the STR/INT/VIT list |
+| 26 | `gear_icon_armor.png` | `gear_icon_armor` | label above the 2×2 armour panel |
+| 27 | `gear_icon_weapon.png` | `gear_icon_weapon` | label above the 2×1 weapon panel |
+| 28 | `gear_icon_accessory.png` | `gear_icon_accessory` | label above the 2×2 accessory panel |
+
+`ui_check` / `ui_cross` / `attr_bracket` / `tab_character` are drawn with SVG,
+the three `gear_icon_*` are bright-pixel glyphs of a tileset plate, sword and
+amulet (so they read as white icons on the dark embed).
+
 ## How the talent tiles were made
 
 ```text
@@ -76,8 +98,10 @@ blank    = fully transparent 128x128 (an empty cell that still takes one
            emoji's width, so the grid cannot shift)
 ```
 
-State colours: off `#3d434b` / `#212429`, available `#d9a441`, on `#5fbf6a` /
-`#46a854`, max gold `#ffe08a` frame, focus `#ffd45e` / `#6d5518`.
+State colours (matched to the reference screen): off `#17191d` with a light
+grey edge, available `#4a1414` with a red ✕, on `#2f7d3b`, max `#3f9d4a` with a
+gold frame and pip, focus `#7a2418` with a gold frame. Links are light grey
+(`#c9ced6`), not red, so the tree reads like the game's.
 
 ## After uploading
 

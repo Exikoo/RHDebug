@@ -11,6 +11,7 @@ import {
   formatNumber,
 } from "./uiTheme.js";
 import { xpToNextLevel } from "./progression.js";
+import { customEmoji } from "../config/emojiIds.js";
 import { ATTRIBUTE_EFFECTS, TALENT_BY_ID } from "../config/talents.js";
 import {
   rankOf,
@@ -205,12 +206,50 @@ export function generateStatsDisplay(view) {
  * @param {Object} [view.classAttributes] Class base STR/INT/VIT.
  * @returns {EmbedBuilder}
  */
+/** Em space: the one padding Discord renders identically in every font. */
+const EM = "\u2003";
+
+/** Custom emoji or a unicode stand-in, never null. */
+const chrome = (name, fallback) => customEmoji(name, fallback) ?? fallback;
+
+/**
+ * Character sheet: the Legends-of-Discord layout, one emoji per cell.
+ *
+ * ```
+ * Character screen
+ * [quick bar: 4 item tiles]
+ * 🧍 Name Race
+ * Attributes - Point left: 3
+ * [bracket] STR: ...
+ * Talents - Point left: 0
+ * Gear
+ *   [armor] [weapon] [amulet]
+ *   ▫️▫️ ▫️ ▫️▫️
+ * Bags
+ * ▫️▫️▫️▫️▫️
+ * Hp 1.0
+ * Lv. 1  HP  MP
+ * ```
+ *
+ * @param {Object} view
+ * @param {any} view.player
+ * @param {any} view.stats            Combined stats (gear + talents applied)
+ * @param {{armor: string[], weapon: string[], accessory: string[]}} view.gear
+ *        One emoji per gear cell; index 0 is the equipped item.
+ * @param {string[]} [view.bags]      Bag cell emoji (5 by default).
+ * @param {string[]} [view.quickBar]  Four item tiles under the band.
+ * @param {Object} [view.classAttributes]
+ * @param {number} [view.potions]     Health potions in the bag (the `Hp 1.0` line).
+ * @returns {EmbedBuilder}
+ */
 export function generateCharacterDisplay({
   player,
   stats,
-  gear = [],
-  bagIcons = [],
+  gear,
+  bags = [],
+  quickBar = [],
   classAttributes = {},
+  potions = 0,
 }) {
   const attributes = totalAttributes(player, classAttributes);
   const maxHealth = Math.max(1, stats.health ?? 1);
@@ -225,56 +264,73 @@ export function generateCharacterDisplay({
     })
     .filter(Boolean);
 
-  const attributeTable = [
-    `STR: ${String(attributes.str).padStart(4)}`,
-    `INT: ${String(attributes.int).padStart(4)}`,
-    `VIT: ${String(attributes.vit).padStart(4)}`,
-    `DMG: ${String(stats.attack ?? 0).padStart(4)}`,
-  ].join("\n");
+  const empty = EMPTY_SLOT_EMOJI;
+  const cells = (list, count) =>
+    Array.from({ length: count }, (_, i) => list?.[i] ?? empty);
+
+  const armor = cells(gear?.armor, 4);
+  const weapon = cells(gear?.weapon, 2);
+  const accessory = cells(gear?.accessory, 4);
+
+  // Three panels side by side: 2x2, 2x1 and 2x2 cells, exactly like the game.
+  const gearLine = (row) =>
+    [armor[row * 2], armor[row * 2 + 1]].join("") +
+    " " +
+    weapon[row] +
+    " " +
+    [accessory[row * 2], accessory[row * 2 + 1]].join("");
+
+  const bagCells = Array.from({ length: 5 }, (_, i) => bags[i] ?? empty);
+  const bracket = chrome("attr_bracket", " ");
 
   const description = [
     areaBand("Character screen"),
-    `🧍 **${player.username}** — ${player.race}`,
-    "",
-    `**Attributes** · Point left: ${player.attributePoints ?? 0}`,
-    "```",
-    attributeTable,
-    "```",
-    `**Talents** · Point left: ${player.talentPoints ?? 0}`,
+    quickBar.slice(0, 4).join(""),
+    `🧍 ${player.username} ${player.race ?? ""}`.trimEnd(),
+    `**Attributes** - Point left: ${player.attributePoints ?? 0}`,
+    `${bracket}STR:    ${attributes.str}`,
+    `${bracket}INT:    ${attributes.int}`,
+    `${bracket}VIT:    ${attributes.vit}`,
+    `${bracket}DMG:    ${stats.attack ?? 0}`,
+    `**Talents** - Point left: ${player.talentPoints ?? 0}`,
     learned.length > 0 ? learned.join(" · ") : "Nothing",
-    "",
     "**Gear**",
-    gear.map(({ item }) => (item ? getItemEmoji(item) : EMPTY_SLOT_EMOJI)).join(" "),
+    `${chrome("gear_icon_armor", "🛡")} ${chrome("gear_icon_weapon", "⚔")} ${chrome(
+      "gear_icon_accessory",
+      "💍",
+    )}`,
+    gearLine(0),
+    gearLine(1),
+    "**Bags**",
+    bagCells.join(""),
     "",
-    `**Bags** ${player.inventory?.length ?? 0}/${player.bagSlots ?? 8}`,
-    bagIcons.slice(0, 8).join(" "),
+    `**Hp** ${Math.max(0, potions)}.0`,
+    `**Lv. ${player.level}**${EM}${EM}**HP**${EM}${EM}${EM}**MP**`,
+    `_${player.experience ?? 0} / ${xpToNextLevel(player.level)}_${EM}${EM}_${health} / ${maxHealth}_${EM}_${mana} / ${maxMana}_`,
     "",
-    `**Lv. ${player.level}**   **HP** ${health}/${maxHealth}   **MP** ${mana}/${maxMana}`,
-    `XP ${player.experience ?? 0}/${xpToNextLevel(player.level)}`,
+    "**Bag slots max**",
+    `${player.bagSlots ?? 8}`,
   ].join("\n");
 
   return new EmbedBuilder()
     .setColor(COLORS.panel)
     .setTitle(`${player.username}'s character`)
-    .setDescription(description)
-    .setFooter({
-      text: `ATK ${stats.attack ?? 0} • DEF ${stats.defense ?? 0} • SPD ${
-        stats.speed ?? 0
-      } • MAG ${stats.magic ?? 0}`,
-    });
+    .setDescription(description);
 }
 
 /**
- * Talent screen: the tree as an emoji grid, the points left, and the
- * description of whichever node is selected.
+ * Talent screen: same chrome as the character sheet, the tree as an emoji
+ * grid with the tier number on the left of each row, and the description of
+ * the highlighted node.
  *
  * @param {Object} view
  * @param {any} view.player
  * @param {string|null} view.selectedId
+ * @param {string[]} [view.quickBar]
  * @returns {EmbedBuilder}
  */
-export function generateTalentDisplay({ player, selectedId = null }) {
-  const tree = renderTalentTree(player, selectedId);
+export function generateTalentDisplay({ player, selectedId = null, quickBar = [] }) {
+  const tree = renderTalentTree(player, selectedId, { tiers: true });
   const talent = selectedId ? TALENT_BY_ID.get(selectedId) : null;
 
   let details = "*Nothing selected*";
@@ -296,7 +352,8 @@ export function generateTalentDisplay({ player, selectedId = null }) {
 
   const description = [
     areaBand("Talent screen"),
-    `**Points left:** ${player.talentPoints ?? 0}`,
+    quickBar.slice(0, 4).join(""),
+    `**Point left:** ${player.talentPoints ?? 0}`,
     "",
     tree.join("\n"),
     "",
@@ -307,12 +364,5 @@ export function generateTalentDisplay({ player, selectedId = null }) {
   return new EmbedBuilder()
     .setColor(COLORS.panel)
     .setTitle(`${player.username}'s character`)
-    .setDescription(description)
-    .setFooter({
-      text: `Attribute points: ${player.attributePoints ?? 0} • ${Object.keys(
-        ATTRIBUTE_EFFECTS,
-      )
-        .map((key) => ATTRIBUTE_EFFECTS[key].short)
-        .join(" / ")} on the character screen`,
-    });
+    .setDescription(description);
 }
