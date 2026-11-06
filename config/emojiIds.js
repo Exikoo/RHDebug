@@ -29,15 +29,15 @@ export const SLOT_EMOJI_IDS = {
 
 /** Talent tree + navigation chrome. */
 export const UI_EMOJI_IDS = {
-  talent_node_off: null,
-  talent_node_available: null,
-  talent_node_on: null,
-  talent_node_max: null,
-  talent_node_focus: null,
-  talent_link_h: null,
-  talent_link_v: null,
-  talent_blank: null,
-  tab_talents: null,
+  talent_node_off: "1568284077851680920",
+  talent_node_available: "1568284079403704320",
+  talent_node_on: "1568284080246755421",
+  talent_node_max: "1568284081295196314",
+  talent_node_focus: "1568284082650218551",
+  talent_link_h: "1568284084172759222",
+  talent_link_v: "1568284086035030106",
+  talent_blank: "1568284087188463807",
+  tab_talents: "1568284088417128508",
 };
 
 export const EMOJI_GROUPS = {
