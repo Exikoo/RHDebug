@@ -29,7 +29,9 @@ Bag slots  Gold
 | Emoji grid + viewport | `utils/mapRenderer.js` |
 | Score title, area band, stat row, activity strip | `utils/screen.js`, `utils/uiTheme.js` |
 | D-pad and utility buttons | `utils/buttonComponents.js` |
-| Character sheet and bag | `utils/menuDisplays.js` |
+| Character sheet, talent screen and bag | `utils/menuDisplays.js` |
+| Talent tree layout / effects / point rates | `config/talents.js` |
+| Talent ranks, bonuses, learn + attribute spend | `utils/talents.js` |
 | Bag slot emoji IDs | `config/emojiIds.js` |
 | XP curve, level ups, vitals clamping | `utils/progression.js` |
 | Startup emoji validation | `utils/emojiCheck.js` |
@@ -103,11 +105,85 @@ with the item art inset to 26/32, exported at 128×128. Paste the IDs into
 prints the block to paste. Until then the bag falls back to unicode glyphs and
 the startup check lists exactly what is missing.
 
+## Character screen
+
+```
+Vlad's character                <- embed title
+```Character screen```          <- dark band
+🧍 **Vlad** — Human
+**Attributes** · Point left: 2
+```
+STR:   10
+INT:    3
+VIT:    8
+DMG:   16
+```
+**Talents** · Point left: 3
+Adventurer's Resolve 1 · Brute Force 2
+**Gear**
+⚔️ 🛡️ ▫️                          <- one emoji per equip slot
+**Bags** 4/8
+🅱️ 🅱️ 🧪 ▫️ ▫️                    <- one emoji per bag slot
+**Lv. 3**   **HP** 118/131   **MP** 0/0
+XP 12/40
+```
+
+Buttons: tab row (`map` / `character` / `talents` / `bag` / `Quit`), then
+`Add an attribute:` + `STR` `INT` `VIT`, then a green ✅ (back to map) and a
+red ❌ (quit) — the same two-button corner as the reference.
+
+Where the points come from: `POINTS_PER_LEVEL` in `config/talents.js` — one
+attribute point per level, one talent point every second level (both granted in
+`utils/progression.js`, both stored on the profile so nothing is recomputed or
+lost). Class attributes (`config/classes.js` → `attributes`) are the starting
+numbers; spent points are added on top of them, and only the spent part touches
+`baseStats`, so combat math stays identical to before the screens existed.
+
+## Talent screen
+
+```
+Vlad's character
+```Talent screen```
+**Points left:** 3
+
+⠀⠀⠀🟨⠀⠀⠀          <- 5 rows x 7 cells, one emoji per cell
+⠀⠀⠀│⠀⠀⠀
+⠀⬛─⬛─⬛⠀
+⠀│⠀│⠀│⠀
+⠀⬛⠀⬛⠀⬛⠀
+
+**Talent description**
+**Brute Force** — rank 1/5
++2 attack per rank
+*Requires Adventurer's Resolve*
+```
+
+Node states map to one emoji each: `talent_node_off` (blocked),
+`talent_node_available` (gold), `talent_node_on` (green), `talent_node_max`
+(white), `talent_node_focus` (the node being described). Connectors are
+`talent_link_h` / `talent_link_v`, empty cells are `talent_blank`; every one is
+a single emoji so the tree cannot shift.
+
+The grid itself is `TREE_LAYOUT` in `config/talents.js` — `N` is a node, `-`
+and `|` are links, `.` is empty. Adding a talent means one entry in `TALENTS`
+plus the `id` in the matching cell; the renderer, the buttons, the prerequisite
+checks and the combat bonuses all read from that table. Bonuses are **derived**
+(`talentBonuses()`), never stored, so a respec or a save reload can never leave
+a stale number in the database.
+
+The talent buttons are the 7 talents by short name (max 5 per row) plus
+`Learn`; the selected node is kept per user for five minutes so re-renders keep
+the description open.
+
 ## Gameplay bits that support the look
 
 - **Level ups**: XP curve `10 + 15 × (level − 1)`, +5 HP and +1 attack/defense
   per level, full heal, `⭐ Level up!` line in the activity strip. Before this
   `/map` showed `Lv. 1` forever because nothing ever levelled the player up.
+  **No level cap** — `MAX_LEVEL` is 9999 purely so a corrupted XP value cannot
+  spin the level-up loop.
+- **Points on level up**: +1 attribute point every level, +1 talent point
+  every second level (`POINTS_PER_LEVEL` in `config/talents.js`).
 - **Defeat**: at 0 HP the player wakes up in the city at full health, losing
   10% gold — no more permanently stuck 0-HP sessions.
 - **Quit** works (it was a permanently disabled button).
@@ -130,3 +206,8 @@ the startup check lists exactly what is missing.
    description.
 6. **Skills and status effects** — `Profile.skills` is an empty array; combat
    is still one exchange per step.
+7. **Trading / marketplace / auction house**, guilds, friends, rankings,
+   achievements, professions, dungeons and the open world — the screens above
+   are the shell these hang off; none of them exist yet.
+8. **More talents** — the tree holds 7 nodes today (`config/talents.js`); a
+   LoD-sized tree is ~30, laid out by editing `TREE_LAYOUT`.

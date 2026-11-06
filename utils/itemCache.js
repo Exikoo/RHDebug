@@ -67,5 +67,9 @@ export async function getCombinedStats(player) {
     equipped[slot] = ids[i] ? (map.get(ids[i]) ?? null) : null;
   });
 
-  return calculateCombinedStats({ baseStats: player.baseStats, equipped });
+  return calculateCombinedStats({
+    baseStats: player.baseStats,
+    equipped,
+    talents: player.talents,
+  });
 }

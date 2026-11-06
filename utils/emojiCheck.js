@@ -1,5 +1,10 @@
 import { EMOJI_MAP, PLAYER_EMOJI_BY_CLASS } from "../config/mapConfig.js";
-import { SLOT_EMOJI_IDS, pendingSlotEmojis } from "../config/emojiIds.js";
+import {
+  EMOJI_GROUPS,
+  SLOT_EMOJI_IDS,
+  pendingEmojis,
+  pendingSlotEmojis,
+} from "../config/emojiIds.js";
 import { MONSTER_TEMPLATES } from "../monsterManager.js";
 import items from "../config/items.js";
 
@@ -49,9 +54,11 @@ export function checkConfiguredEmojis(client) {
     ...Object.entries(PLAYER_EMOJI_BY_CLASS ?? {})
       .filter(([, value]) => value)
       .map(([key, value]) => [`player ${key}`, value]),
-    ...Object.entries(SLOT_EMOJI_IDS ?? {})
-      .filter(([, id]) => id)
-      .map(([key, id]) => [`bag ${key}`, `<:${key}:${id}>`]),
+    ...Object.entries(EMOJI_GROUPS).flatMap(([group, ids]) =>
+      Object.entries(ids)
+        .filter(([, id]) => id)
+        .map(([key, id]) => [`${group} ${key}`, `<:${key}:${id}>`]),
+    ),
   ];
 
   for (const [key, value] of entries) {
@@ -105,6 +112,14 @@ export function reportEmojiHealth(client) {
             : "not in any server the bot is in";
         console.warn(`   • ${problem.key} → ${problem.name} (${why})`);
       }
+    }
+
+    const pendingUi = pendingEmojis("ui");
+    if (pendingUi.length > 0) {
+      console.warn(
+        `⚠️  Talent screen emojis not configured yet: ${pendingUi.length} ` +
+          `(${pendingUi.join(", ")}).`,
+      );
     }
 
     const pendingBag = pendingSlotEmojis();

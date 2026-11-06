@@ -5,7 +5,14 @@
  * first level is cheap and each one after that costs progressively more.
  */
 
-export const MAX_LEVEL = 99;
+import { POINTS_PER_LEVEL } from "../config/talents.js";
+
+/**
+ * The level cap only exists to stop a corrupted XP value from looping
+ * forever — Legends of Discord has no level limit, so this is a sanity
+ * bound, not a design cap. The curve itself (xpToNextLevel) is linear.
+ */
+export const MAX_LEVEL = 9999;
 
 /** Stat gain applied to baseStats each time the player levels up. */
 export const LEVEL_UP_GAIN = {
@@ -61,6 +68,15 @@ export function addExperience(player, amount, max = null) {
   }
 
   if (player.level >= MAX_LEVEL) player.experience = 0;
+
+  // Every level grants something to spend on the character sheet.
+  for (const level of levels) {
+    player.attributePoints =
+      (player.attributePoints ?? 0) + POINTS_PER_LEVEL.attribute;
+    if (level % POINTS_PER_LEVEL.talentEvery === 0) {
+      player.talentPoints = (player.talentPoints ?? 0) + 1;
+    }
+  }
 
   if (levels.length > 0) {
     // Level ups are a free heal, so the level-up message actually matters.

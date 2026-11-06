@@ -1,4 +1,9 @@
-# Bag emojis — upload list
+# Emojis to upload
+
+Two sets, both generated from `tileset/` and both named `slot_*` / `talent_*`
+so the code can find them without any extra mapping. 20 files in total.
+
+## Bag emojis — upload list
 
 Eleven 128×128 PNGs, generated from `tileset/` so a filled slot and an empty
 slot are both **exactly one emoji wide**. That is what keeps the inventory row
@@ -35,6 +40,45 @@ item cell  = frame + item sprite scaled to 26/32 and centred
 output     = 32x32 → 128x128 nearest-neighbour, transparent background
 ```
 
+# Talent / character emojis — upload list
+
+Nine 128×128 PNGs for the character and talent screens. Preview:
+[`preview-talents.png`](preview-talents.png).
+
+| # | File to upload | Emoji name | Used for | Art |
+| --- | --- | --- | --- | --- |
+| 12 | `talent_node_off.png` | `talent_node_off` | node not learned, prerequisite missing | dark stone tile |
+| 13 | `talent_node_available.png` | `talent_node_available` | can be learned right now | gold tile |
+| 14 | `talent_node_on.png` | `talent_node_on` | learned (rank ≥ 1) | green tile |
+| 15 | `talent_node_max.png` | `talent_node_max` | learned to max rank | white tile |
+| 16 | `talent_node_focus.png` | `talent_node_focus` | node whose description is shown | gold, lit |
+| 17 | `talent_link_h.png` | `talent_link_h` | horizontal connector between nodes | — |
+| 18 | `talent_link_v.png` | `talent_link_v` | vertical connector between nodes | — |
+| 19 | `talent_blank.png` | `talent_blank` | empty tree cell (keeps the grid aligned) | — |
+| 20 | `tab_talents.png` | `tab_talents` | "Talents" tab button | ⭐ tile |
+
+Every cell of the 7×5 talent grid is exactly one emoji, so the tree keeps its
+shape no matter which node state it is in. Uploading all nine is what makes
+the tree look like the reference; without them it falls back to
+⬛ / 🟨 / 🟩 / ⬜ / ⭐ and still works.
+
+## How the talent tiles were made
+
+```text
+canvas   = 32x32, transparent
+frame    = rounded rect, 1px inset, 3px thick  (state colour)
+inner    = frame + 3px inset                   (state fill)
+marks    = on: darker green centre • max: green centre + gold pip
+           focus: amber centre + pale pip
+output   = 32x32 → 128x128 nearest-neighbour, PNG
+links    = 24x6 (h) / 6x24 (v) dark red bar, centred in a 32x32 canvas
+blank    = fully transparent 128x128 (an empty cell that still takes one
+           emoji's width, so the grid cannot shift)
+```
+
+State colours: off `#3d434b` / `#212429`, available `#d9a441`, on `#5fbf6a` /
+`#46a854`, max gold `#ffe08a` frame, focus `#ffd45e` / `#6d5518`.
+
 ## After uploading
 
 Two ways to get the IDs in place.
@@ -46,12 +90,18 @@ the upload and the ID collection:
 /emojis upload     # uploads any missing docs/emojis/*.png as application emojis
 ```
 
-It replies with a ready-to-paste block:
+It uploads every `docs/emojis/*.png` that is not in the application yet and
+replies with two ready-to-paste objects:
 
 ```js
 export const SLOT_EMOJI_IDS = {
   slot_empty: "1234567890123456789",
   slot_warrior_sword: "1234567890123456790",
+  // ...
+};
+
+export const UI_EMOJI_IDS = {
+  talent_node_off: "1234567890123456791",
   // ...
 };
 ```

@@ -11,6 +11,12 @@ import {
   formatNumber,
 } from "./uiTheme.js";
 import { xpToNextLevel } from "./progression.js";
+import { ATTRIBUTE_EFFECTS, TALENT_BY_ID } from "../config/talents.js";
+import {
+  rankOf,
+  renderTalentTree,
+  totalAttributes,
+} from "./talents.js";
 
 export function generateInventoryDisplay(playerProfile) {
   let desc = `**Gold:** ${formatNumber(playerProfile.gold)} 🪙\n\n`;
@@ -184,4 +190,129 @@ export function generateStatsDisplay(view) {
   }
 
   return embed;
+}
+
+/**
+ * Character sheet, laid out like the reference:
+ * identity, attributes (+ points to spend), talents, gear row, bags row,
+ * then level / XP / HP / MP and the bag capacity.
+ *
+ * @param {Object} view
+ * @param {any} view.player              Profile document.
+ * @param {any} view.stats               Combined stats (gear + talents).
+ * @param {Array<{slot: string, item: object|null}>} view.gear
+ * @param {string[]} view.bagIcons       One emoji per bag slot.
+ * @param {Object} [view.classAttributes] Class base STR/INT/VIT.
+ * @returns {EmbedBuilder}
+ */
+export function generateCharacterDisplay({
+  player,
+  stats,
+  gear = [],
+  bagIcons = [],
+  classAttributes = {},
+}) {
+  const attributes = totalAttributes(player, classAttributes);
+  const maxHealth = Math.max(1, stats.health ?? 1);
+  const maxMana = Math.max(0, stats.magic ?? 0);
+  const health = Math.min(maxHealth, player.currentHealth ?? maxHealth);
+  const mana = Math.min(maxMana, player.currentMana ?? maxMana);
+
+  const learned = [...(player.talents?.entries?.() ?? [])]
+    .map(([id, rank]) => {
+      const talent = TALENT_BY_ID.get(id);
+      return talent && rank > 0 ? `${talent.name} ${rank}` : null;
+    })
+    .filter(Boolean);
+
+  const attributeTable = [
+    `STR: ${String(attributes.str).padStart(4)}`,
+    `INT: ${String(attributes.int).padStart(4)}`,
+    `VIT: ${String(attributes.vit).padStart(4)}`,
+    `DMG: ${String(stats.attack ?? 0).padStart(4)}`,
+  ].join("\n");
+
+  const description = [
+    areaBand("Character screen"),
+    `🧍 **${player.username}** — ${player.race}`,
+    "",
+    `**Attributes** · Point left: ${player.attributePoints ?? 0}`,
+    "```",
+    attributeTable,
+    "```",
+    `**Talents** · Point left: ${player.talentPoints ?? 0}`,
+    learned.length > 0 ? learned.join(" · ") : "Nothing",
+    "",
+    "**Gear**",
+    gear.map(({ item }) => (item ? getItemEmoji(item) : EMPTY_SLOT_EMOJI)).join(" "),
+    "",
+    `**Bags** ${player.inventory?.length ?? 0}/${player.bagSlots ?? 8}`,
+    bagIcons.slice(0, 8).join(" "),
+    "",
+    `**Lv. ${player.level}**   **HP** ${health}/${maxHealth}   **MP** ${mana}/${maxMana}`,
+    `XP ${player.experience ?? 0}/${xpToNextLevel(player.level)}`,
+  ].join("\n");
+
+  return new EmbedBuilder()
+    .setColor(COLORS.panel)
+    .setTitle(`${player.username}'s character`)
+    .setDescription(description)
+    .setFooter({
+      text: `ATK ${stats.attack ?? 0} • DEF ${stats.defense ?? 0} • SPD ${
+        stats.speed ?? 0
+      } • MAG ${stats.magic ?? 0}`,
+    });
+}
+
+/**
+ * Talent screen: the tree as an emoji grid, the points left, and the
+ * description of whichever node is selected.
+ *
+ * @param {Object} view
+ * @param {any} view.player
+ * @param {string|null} view.selectedId
+ * @returns {EmbedBuilder}
+ */
+export function generateTalentDisplay({ player, selectedId = null }) {
+  const tree = renderTalentTree(player, selectedId);
+  const talent = selectedId ? TALENT_BY_ID.get(selectedId) : null;
+
+  let details = "*Nothing selected*";
+  if (talent) {
+    const rank = rankOf(player, talent.id);
+    const effect = Object.entries(talent.effect)
+      .map(([stat, perRank]) => `+${perRank} ${stat} per rank`)
+      .join(", ");
+    details = [
+      `**${talent.name}** — rank ${rank}/${talent.maxRank}`,
+      effect,
+      talent.requires.length > 0
+        ? `*Requires ${talent.requires
+            .map((id) => TALENT_BY_ID.get(id)?.name ?? id)
+            .join(", ")}*`
+        : "*No prerequisite*",
+    ].join("\n");
+  }
+
+  const description = [
+    areaBand("Talent screen"),
+    `**Points left:** ${player.talentPoints ?? 0}`,
+    "",
+    tree.join("\n"),
+    "",
+    "**Talent description**",
+    details,
+  ].join("\n");
+
+  return new EmbedBuilder()
+    .setColor(COLORS.panel)
+    .setTitle(`${player.username}'s character`)
+    .setDescription(description)
+    .setFooter({
+      text: `Attribute points: ${player.attributePoints ?? 0} • ${Object.keys(
+        ATTRIBUTE_EFFECTS,
+      )
+        .map((key) => ATTRIBUTE_EFFECTS[key].short)
+        .join(" / ")} on the character screen`,
+    });
 }
