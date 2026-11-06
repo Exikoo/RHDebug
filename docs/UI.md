@@ -146,6 +146,13 @@ The button panel, top to bottom:
 | 4 | `Add an attribute:` (disabled) · `STR` `INT` `VIT` (blue) | spends one attribute point |
 | 5 | 3 blanks · ✅ · ❌ | ✅ → map, ❌ → quit |
 
+Row 1 and row 5 share actions with row 2/3 (bag, map, quit) but **never share a
+`custom_id`**: Discord rejects a whole message with `50035
+COMPONENT_CUSTOM_ID_DUPLICATED`, and you only find out when someone presses a
+button. `map_char_bag`, `map_char_done` and `map_char_quit` are aliases routed
+to the same handlers; `node scripts/check-buttons.mjs` re-checks every panel
+for duplicate ids and over-long rows.
+
 Gear is three panels side by side — 2×2 armour, 2×1 weapon, 2×2 accessory —
 one emoji per cell, so the grids line up whatever is equipped. Index 0 of each
 panel is the equipped item; until the slots exist in the profile the rest stay

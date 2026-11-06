@@ -477,7 +477,7 @@ export function createCharacterButtons(playerProfile, icons = {}) {
     emojiButton("map_show_talents", TILE_TALENTS()),
     createPlaceholderButton("map_char_pad_1"),
     createPlaceholderButton("map_char_pad_2"),
-    emojiButton("map_show_inventory", icons.bag || BAG_EMOJI),
+    emojiButton("map_char_bag", icons.bag || BAG_EMOJI),
   );
 
   const row3 = new ActionRowBuilder().addComponents(
@@ -510,8 +510,8 @@ export function createCharacterButtons(playerProfile, icons = {}) {
     createPlaceholderButton("map_char_pad_6"),
     createPlaceholderButton("map_char_pad_7"),
     createPlaceholderButton("map_char_pad_8"),
-    emojiButton("map_back_to_map", customEmoji("ui_check", "✅") ?? "✅"),
-    emojiButton("map_quit", customEmoji("ui_cross", "❌") ?? "❌"),
+    emojiButton("map_char_done", customEmoji("ui_check", "✅") ?? "✅"),
+    emojiButton("map_char_quit", customEmoji("ui_cross", "❌") ?? "❌"),
   );
 
   return [row1, row2, row3, row4, row5];

@@ -208,6 +208,10 @@ const EXACT_HANDLERS = new Map([
   ["map_show_talents", showTalents],
   ["map_talent_learn", learnSelectedTalent],
   ["map_use_potion", usePotion],
+  // Aliases so one message never repeats a custom id (Discord rejects that).
+  ["map_char_bag", openBag],
+  ["map_char_done", showMap],
+  ["map_char_quit", quitGame],
   ["map_show_actions", showActions],
   ["map_action_stairs", useStairs],
   ["map_action_shop", openShop],
