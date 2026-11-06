@@ -4,9 +4,16 @@ import {
   toSuperscript,
   EMPTY_SLOT_EMOJI,
 } from "./itemDisplay.js";
+import {
+  COLORS,
+  areaBand,
+  renderGauge,
+  formatNumber,
+} from "./uiTheme.js";
+import { xpToNextLevel } from "./progression.js";
 
 export function generateInventoryDisplay(playerProfile) {
-  let desc = `**Gold:** ${playerProfile.gold} 🪙\n\n`;
+  let desc = `**Gold:** ${formatNumber(playerProfile.gold)} 🪙\n\n`;
 
   if (!playerProfile.inventory || playerProfile.inventory.length === 0) {
     desc += "*Your bag is empty...*";
@@ -21,14 +28,14 @@ export function generateInventoryDisplay(playerProfile) {
   return new EmbedBuilder()
     .setTitle(`🎒 ${playerProfile.username}'s Inventory`)
     .setDescription(desc)
-    .setColor(0x5865f2);
+    .setColor(COLORS.panel);
 }
 
 /**
- * Builds the "bag" embed: a row of slot icons, the used/total slot
+ * Builds the "bag" screen: a row of slot icons, the used/total slot
  * count, and a details block for whichever slot is currently selected.
- * This is the display used by the interactive bag opened via the 🎒
- * button on the map (see createBagButtons in buttonComponents.js).
+ * Kept visually identical to the map screen so moving between them feels
+ * like tabbing through one console UI.
  * @param {Object} playerProfile
  * @param {number|null} selectedIndex - Index into playerProfile.inventory, or null for no selection.
  * @returns {EmbedBuilder}
@@ -47,42 +54,110 @@ export function generateBagDisplay(playerProfile, selectedIndex = null) {
     return `${emoji}${badge}`;
   });
 
-  let desc = "```            Inventory            ```\n";
-  desc += slotIcons.join("  ") + "\n\n";
-  desc += `**Bag slots**\n${slots.length}/${bagSlots}\n\n`;
+  let desc = areaBand(`${playerProfile.username}'s bag`);
+  desc += `\n\n${slotIcons.join("  ")}\n\n`;
+  desc += `**Bag slots** ${slots.length}/${bagSlots}   •   **Gold** ${formatNumber(
+    playerProfile.gold,
+  )} 🪙\n\n`;
 
   const selectedSlot = selectedIndex !== null ? slots[selectedIndex] : null;
 
   if (selectedSlot?.item) {
     const item = selectedSlot.item;
-    desc += `>>> Details of the item\n**${item.name}**\n${
+    desc += `>>> **${item.name}** x${selectedSlot.quantity}\n${
       item.description || "No description available."
     }`;
   } else {
-    desc += ">>> Details of the item\n*Select a slot below to inspect it.*";
+    desc += ">>> *Select a slot below to inspect it.*";
   }
 
   return new EmbedBuilder()
-    .setTitle(`🎒 ${playerProfile.username}'s bag`)
+    .setTitle(`🎒 Bag — ${playerProfile.username}`)
     .setDescription(desc)
-    .setColor(0xe67e22)
-    .setFooter({ text: `${playerProfile.gold} 🪙 gold` });
+    .setColor(COLORS.panel)
+    .setFooter({ text: `${formatNumber(playerProfile.gold)} 🪙 gold` });
 }
 
-export function generateStatsDisplay(playerProfile) {
-  const stats = playerProfile.totalStats;
+/**
+ * Character sheet. Mirrors the handheld layout: identity + XP gauge on
+ * top, vitals as gauges, then the paper doll of equipped gear.
+ *
+ * @param {Object} view
+ * @param {string} view.username
+ * @param {number} view.level
+ * @param {string} view.class
+ * @param {number} view.experience
+ * @param {Object} view.totalStats
+ * @param {string} [view.race]
+ * @param {string} [view.gender]
+ * @param {string} [view.difficulty]
+ * @param {number} [view.gold]
+ * @param {number} [view.currentHealth]
+ * @param {number} [view.currentMana]
+ * @param {Array<{slot: string, item: object|null}>} [view.equipment]
+ * @param {object} [view.interaction]
+ * @returns {EmbedBuilder}
+ */
+export function generateStatsDisplay(view) {
+  const stats = view.totalStats || {};
+  const maxHealth = Math.max(1, stats.health ?? 1);
+  const maxMana = Math.max(0, stats.magic ?? 0);
+  const health = view.currentHealth ?? maxHealth;
+  const mana = view.currentMana ?? maxMana;
+  const nextXp = xpToNextLevel(view.level);
 
-  let desc = `**XP:** ${playerProfile.experience}\n\n`;
-  desc += `❤️ **Health:** ${stats.health}\n`;
-  desc += `⚔️ **Attack:** ${stats.attack}\n`;
-  desc += `🛡️ **Defense:** ${stats.defense}\n`;
-  desc += `💨 **Speed:** ${stats.speed}\n`;
-  desc += `✨ **Magic:** ${stats.magic}`;
+  // Plain text: markdown does not render inside the code-block band.
+  const identity = [
+    view.difficulty ?? null,
+    view.race ?? null,
+    view.gender === "Female" ? "♀" : view.gender === "Male" ? "♂" : null,
+  ]
+    .filter(Boolean)
+    .join(" • ");
 
-  return new EmbedBuilder()
-    .setTitle(
-      `📊 ${playerProfile.username} - Level ${playerProfile.level} ${playerProfile.class}`,
-    )
+  const desc = [
+    areaBand(`${view.class}${identity ? ` • ${identity}` : ""}`),
+    "",
+    `**Lv. ${view.level}**   ${renderGauge("xp", view.experience, nextXp)}`,
+    "",
+    renderGauge("hp", health, maxHealth),
+    renderGauge("mp", mana, maxMana),
+  ].join("\n");
+
+  const embed = new EmbedBuilder()
+    .setColor(COLORS.panel)
+    .setTitle(`📊 ${view.username}`)
     .setDescription(desc)
-    .setColor(0x5865f2);
+    .addFields({
+      name: "Attributes",
+      value: [
+        `⚔️ Attack **${stats.attack ?? 0}**`,
+        `🛡️ Defense **${stats.defense ?? 0}**`,
+        `💨 Speed **${stats.speed ?? 0}**`,
+        `✨ Magic **${stats.magic ?? 0}**`,
+      ].join("   "),
+    });
+
+  if (Array.isArray(view.equipment)) {
+    embed.addFields({
+      name: "Equipment",
+      value: view.equipment
+        .map(({ slot, item }) => {
+          const icon = { weapon: "⚔️", armor: "🛡️", accessory: "💍" }[slot];
+          if (!item) return `${icon} **${slot}** — *empty*`;
+          const bonus = Object.entries(item.stats || {})
+            .filter(([, value]) => value)
+            .map(([stat, value]) => `${value > 0 ? "+" : ""}${value} ${stat}`)
+            .join(", ");
+          return `${icon} **${item.name}**${bonus ? ` (${bonus})` : ""}`;
+        })
+        .join("\n"),
+    });
+  }
+
+  if (view.gold !== undefined) {
+    embed.setFooter({ text: `${formatNumber(view.gold)} 🪙 gold` });
+  }
+
+  return embed;
 }

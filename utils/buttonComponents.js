@@ -106,7 +106,7 @@ export async function createNavigationButtons(
       "<:bookstats:1415349972043563125>",
     ),
     createPlaceholderButton("map_placeholder_6"),
-    createDirectionButton("map_move_up", "1", hasMonsterUp, blockedUp),
+    createDirectionButton("map_move_up", "⬆️", hasMonsterUp, blockedUp),
     createPlaceholderButton("map_placeholder_7"),
     createActionButtonEmoji(
       "map_show_actions",
@@ -121,9 +121,9 @@ export async function createNavigationButtons(
       ButtonStyle.Secondary,
       "<:mini_map_icon:1415348946892623892>",
     ),
-    createDirectionButton("map_move_left", "3", hasMonsterLeft, blockedLeft),
-    createDirectionButton("map_move_down", "2", hasMonsterDown, blockedDown),
-    createDirectionButton("map_move_right", "4", hasMonsterRight, blockedRight),
+    createDirectionButton("map_move_left", "⬅️", hasMonsterLeft, blockedLeft),
+    createDirectionButton("map_move_down", "⬇️", hasMonsterDown, blockedDown),
+    createDirectionButton("map_move_right", "➡️", hasMonsterRight, blockedRight),
     createQuitButton(),
   );
 
@@ -215,10 +215,15 @@ export function createTileActionButtons(tile) {
   return null;
 }
 
-function createDirectionButton(customId, label, hasMonster, isBlocked) {
+/**
+ * One arm of the D-pad. Red when a monster is next to it (so you know what
+ * you are walking into), primary blue when the tile is free, greyed out when
+ * the way is blocked.
+ */
+function createDirectionButton(customId, emoji, hasMonster, isBlocked) {
   const button = new ButtonBuilder()
     .setCustomId(customId)
-    .setLabel(label)
+    .setEmoji(emoji)
     .setStyle(hasMonster ? ButtonStyle.Danger : ButtonStyle.Primary);
 
   if (isBlocked) button.setDisabled(true);
@@ -241,12 +246,15 @@ export function createPlaceholderButton(customId) {
 /**
  * @returns {ButtonBuilder}
  */
+/**
+ * Closes the game screen. Unlike the placeholders this one actually works:
+ * it ends the session and removes the buttons, like quitting a handheld.
+ */
 export function createQuitButton() {
   return new ButtonBuilder()
-    .setCustomId("quit")
+    .setCustomId("map_quit")
     .setLabel("Quit")
-    .setStyle(ButtonStyle.Danger)
-    .setDisabled(true);
+    .setStyle(ButtonStyle.Danger);
 }
 
 /**

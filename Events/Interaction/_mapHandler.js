@@ -10,7 +10,7 @@ import Profile from "../../models/Profile.js";
 
 import { getMap } from "../../utils/mapCache.js";
 import { getCombinedStats, getItemMap, idOf } from "../../utils/itemCache.js";
-import { generateMapRows } from "../../utils/mapRenderer.js";
+import { buildMapEmbed } from "../../utils/screen.js";
 import combatManager from "../../utils/combatManager.js";
 import {
   monsterManager,
@@ -38,6 +38,8 @@ import {
 } from "../../utils/buttonComponents.js";
 
 import { LEGEND } from "../../config/mapConfig.js";
+import { addExperience, clampVitals } from "../../utils/progression.js";
+import { COLORS } from "../../utils/uiTheme.js";
 
 /*
  * Performance notes
@@ -171,8 +173,10 @@ function createContext(interaction, player, map) {
 // =====================================================================
 
 const EXACT_HANDLERS = new Map([
+  ["map_open", showMap],
   ["map_back_to_map", showMap],
   ["map_action_shop_leave", showMap],
+  ["map_quit", quitGame],
   ["map_show_inventory", openBag],
   ["map_bag_use", (ctx) => runBagAction(ctx, "✅", useSelected)],
   ["map_bag_trash", (ctx) => runBagAction(ctx, "🗑️", trashSelected)],
@@ -220,7 +224,15 @@ async function renderMap(ctx, map, deadKeys) {
   ]);
 
   return ctx.interaction.editReply({
-    embeds: [createMainMapEmbed(ctx.player, stats, map, dead)],
+    embeds: [
+      buildMapEmbed({
+        player: ctx.player,
+        stats,
+        map,
+        deadKeys: dead,
+        recent: getRecentCombatMessages(ctx.player.userId),
+      }),
+    ],
     components: await createNavigationButtons(
       ctx.player,
       map,
@@ -234,79 +246,6 @@ async function renderMap(ctx, map, deadKeys) {
 async function showMap(ctx) {
   clearBagSelection(ctx.userId);
   return renderMap(ctx, ctx.map);
-}
-
-/**
- * Cheap alternative to deep-cloning the whole map on every render: rows
- * are only copied when they contain a dead monster.
- */
-function applyDeadMonsters(mapData, deadKeys) {
-  if (deadKeys.size === 0) return mapData;
-
-  const display = mapData.slice();
-  for (const key of deadKeys) {
-    const [x, y] = key.split(",").map(Number);
-    if (!MONSTER_TEMPLATES[mapData[y]?.[x]]) continue;
-
-    if (display[y] === mapData[y]) display[y] = mapData[y].slice();
-    display[y][x] = "PUDDLE";
-  }
-  return display;
-}
-
-function createMainMapEmbed(player, combinedStats, map, deadKeys) {
-  const { x, y } = player.location;
-
-  const rows = generateMapRows(
-    applyDeadMonsters(map.mapData, deadKeys),
-    player.location,
-  );
-
-  const inventoryUsed = player.inventory?.length ?? 0;
-  const currentHealth = player.currentHealth || combinedStats.health;
-  const currentMana = player.currentMana || combinedStats.magic;
-
-  const embed = new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setTitle(
-      `${player.username}'s score: ${
-        player.experience || 0
-      }\n\`\`\`        The City of RuneHero        \`\`\``,
-    )
-    .setDescription(rows.join("\n"))
-    .addFields(
-      {
-        name: `Lv. ${player.level} | ${combinedStats.health} / ${combinedStats.health}`,
-        value: `HP: ${currentHealth} / ${combinedStats.health}\nMP: ${currentMana} / ${combinedStats.magic}`,
-        inline: true,
-      },
-      {
-        name: "Bag slots",
-        value: `${inventoryUsed}/${player.bagSlots}`,
-        inline: true,
-      },
-      { name: `Position (${x},${y})`, value: "Path: [nswe]", inline: true },
-    );
-
-  if (player.currentTarget) {
-    embed.addFields({
-      name: `Target: ${player.currentTarget}`,
-      value: player.targetProgress,
-    });
-  }
-
-  const recent = getRecentCombatMessages(player.userId);
-  if (recent.length > 0) {
-    embed.addFields({
-      name: "📜 Activity",
-      value: recent
-        .map((m) => `> ${m}`)
-        .join("\n")
-        .slice(0, 1024),
-    });
-  }
-
-  return embed;
 }
 
 // =====================================================================
@@ -491,17 +430,48 @@ async function handleCombat(ctx, position, monsterType, deadKeys) {
       player.targetPosition = position;
 
       if (killed) {
-        player.experience += monster.experience;
+        const { levelsGained } = addExperience(
+          player,
+          monster.experience,
+          stats,
+        );
         player.gold += Math.floor(monster.experience / 2);
         clearTarget(player);
-        addCombatMessage(player.userId, `You defeated ${monster.name}!`);
+        addCombatMessage(
+          player.userId,
+          `You defeated ${monster.name}! +${monster.experience} XP`,
+        );
         nextDead = new Set(deadKeys).add(monsterKey(position.x, position.y));
+
+        if (levelsGained > 0) {
+          addCombatMessage(
+            player.userId,
+            `⭐ Level up! You are now Lv. ${player.level} (fully healed).`,
+          );
+        }
       } else {
         addCombatMessage(
           player.userId,
           `${monster.name} hit you for ${monsterDamage} HP!`,
         );
       }
+    }
+
+    clampVitals(player, stats);
+
+    if (player.currentHealth <= 0) {
+      const { lost } = await respawnAfterDeath(player, stats);
+      addCombatMessage(
+        player.userId,
+        `💀 ${monster.name} defeated you!`,
+      );
+      addCombatMessage(
+        player.userId,
+        `You wake up in the city${lost > 0 ? ` (-${lost} gold)` : ""}.`,
+      );
+
+      const respawnMap = await getMap(player.currentMapId);
+      return await renderMap(ctx, respawnMap ?? map, EMPTY_SET);
     }
 
     await player.save();
@@ -514,6 +484,39 @@ async function handleCombat(ctx, position, monsterType, deadKeys) {
       flags: EPHEMERAL,
     });
   }
+}
+
+const RESPAWN_MAP_ID = "main_city";
+const RESPAWN_POINT = { x: 8, y: 5 };
+/** Share of gold lost when a monster knocks the player out. */
+const DEATH_GOLD_PENALTY = 0.1;
+
+/**
+ * Sends the player back to the city at full health after a defeat.
+ * Death is a setback, not a dead end: the run continues, the town is safe.
+ * @param {any} player Profile document.
+ * @param {{health:number, magic:number}} stats Combined stats.
+ * @returns {Promise<{lost: number}>} Gold lost.
+ */
+async function respawnAfterDeath(player, stats) {
+  const lost = Math.floor((player.gold || 0) * DEATH_GOLD_PENALTY);
+
+  player.gold = Math.max(0, (player.gold || 0) - lost);
+  player.currentHealth = Math.max(1, stats.health ?? 1);
+  player.currentMana = Math.max(0, stats.magic ?? 0);
+  clearTarget(player);
+  combatManager.endCombat(player.userId);
+
+  try {
+    await player.changeMap(RESPAWN_MAP_ID, RESPAWN_POINT);
+  } catch (error) {
+    console.error("Respawn failed, forcing city spawn:", error);
+    player.currentMapId = RESPAWN_MAP_ID;
+    player.location = { ...RESPAWN_POINT };
+    await player.save();
+  }
+
+  return { lost };
 }
 
 // =====================================================================
@@ -549,14 +552,30 @@ function getRecentCombatMessages(userId) {
 async function showStats(ctx) {
   const { player, interaction } = ctx;
 
+  const [stats, items] = await Promise.all([ctx.stats(), getItemMap()]);
+
+  // Resolve the paper doll from the item cache: no populate queries, and
+  // the sheet shows exactly what the map sprite is wearing.
+  const equipment = ["weapon", "armor", "accessory"].map((slot) => ({
+    slot,
+    item: items.get(idOf(player.equipped?.[slot])) ?? null,
+  }));
+
   // generateStatsDisplay reads `totalStats`; hand it the cache-derived
   // value so equipment bonuses show up without populating the profile.
   const view = {
     username: player.username,
     level: player.level,
     class: player.class,
+    race: player.race,
+    gender: player.gender,
+    difficulty: player.difficulty,
     experience: player.experience,
-    totalStats: await ctx.stats(),
+    totalStats: stats,
+    currentHealth: player.currentHealth,
+    currentMana: player.currentMana,
+    gold: player.gold,
+    equipment,
   };
 
   return interaction.editReply({
@@ -692,7 +711,10 @@ function buildShopReply(player, interaction) {
     createRequestedByButton(interaction.user.username),
   );
 
-  return { embeds: [shopEmbed], components: [row1, row2, row3, row4] };
+  return {
+    embeds: [shopEmbed],
+    components: [row1, row2, row3, row4],
+  };
 }
 
 // =====================================================================
@@ -776,6 +798,31 @@ async function runBagAction(ctx, icon, action) {
       flags: EPHEMERAL,
     });
   }
+}
+
+// =====================================================================
+// Quit
+// =====================================================================
+
+/**
+ * Closes the screen the way the handheld "Quit" button does: the message
+ * keeps the final panel, but every control disappears.
+ * @param {Ctx} ctx
+ */
+async function quitGame(ctx) {
+  clearBagSelection(ctx.userId);
+
+  return ctx.interaction.editReply({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(COLORS.panel)
+        .setTitle("Game saved")
+        .setDescription(
+          `👋 See you soon, **${ctx.player.username}**!\n> Your progress is saved — use \`/map\` to jump back in at any time.`,
+        ),
+    ],
+    components: [],
+  });
 }
 
 // =====================================================================

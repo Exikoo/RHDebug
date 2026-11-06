@@ -4,14 +4,13 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  PermissionFlagsBits,
 } from "discord.js";
+import { COLORS, areaBand, formatNumber } from "../../utils/uiTheme.js";
 
 export default {
   data: new SlashCommandBuilder()
     .setName("help")
-    .setDescription("Help menu for RuneHero")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    .setDescription("How to play RuneHero."),
   /**
    * @param {import("discord.js").ChatInputCommandInteraction} interaction
    * @param {import("discord.js").Client} client
@@ -36,31 +35,42 @@ export default {
     interaction.reply({
       embeds: [
         new EmbedBuilder()
-          .setColor("#f53152")
-          .setAuthor({
-            name: "RuneHero's Help Panel",
-            iconURL: interaction.user.displayAvatarURL(),
-          })
-          .setThumbnail(client.user.displayAvatarURL())
+          .setColor(COLORS.panel)
+          .setTitle("RuneHero — Help")
           .setDescription(
-            "RuneHero is a roguelike dungeon-crawler with no ending! Play all you want, level up your character and defeat monsters!",
+            [
+              areaBand("How to play"),
+              "> **1.** Run `/start` and build your character with buttons.",
+              "> **2.** Press **Play** — the whole game happens on one screen.",
+              "> **3.** Move with the D-pad, open the bag, gear up, fight monsters.",
+              "",
+              "No other command needed. Your progress saves automatically.",
+            ].join("\n"),
           )
+          .setThumbnail(client.user.displayAvatarURL())
           .addFields(
             {
-              name: "🆘 Support",
+              name: "🕹️ Controls",
               value:
-                "Join the [support server](https://discord.gg/dank) for help.",
+                "**⬆️⬇️⬅️➡️** Move • **📖** Stats • **🎒** Bag • **🗺️** Map • **Quit** ends the screen",
             },
             {
-              name: "🧱 Invite",
+              name: "⚔️ Combat",
               value:
-                "Invite RuneHero using [this link](https://discord.com/api/oauth2/authorize?client_id=865650395783364620&permissions=1945552416471&scope=bot%20applications.commands).",
+                "Walk into a monster to attack. Monsters drop XP and gold; level ups fully heal you.",
             },
             {
               name: "💡 Stats",
-              value: `Currently serving **${users}** users across **${guilds}** servers.`,
+              value: `Serving **${formatNumber(users)}** users across **${formatNumber(
+                guilds,
+              )}** servers.`,
             },
-          ),
+            {
+              name: "🆘 Support",
+              value: "Join the [support server](https://discord.gg/dank) for help.",
+            },
+          )
+          .setFooter({ text: "RuneHero — a roguelike that never ends" }),
       ],
       components: [row],
     });

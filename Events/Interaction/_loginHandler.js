@@ -3,12 +3,15 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  MessageFlags,
 } from "discord.js";
 import Profile from "../../models/Profile.js";
 import ItemManager from "../../utils/itemManager.js";
 import classes from "../../config/classes.js";
 import GAME_CONFIG from "../../utils/gameConfig.js";
 import { replyError } from "../../utils/errorHandler.js";
+import { COLORS, areaBand } from "../../utils/uiTheme.js";
+import { calculateCombinedStats } from "../../utils/playerUtils.js";
 
 const VALID_BUTTON_PREFIXES = ["class_", "race_"];
 const VALID_BUTTON_IDS = new Set([
@@ -64,6 +67,18 @@ export function match(interaction) {
  */
 export async function execute(interaction) {
   const { customId, message } = interaction;
+
+  // The creation panel belongs to whoever ran /start — other members must
+  // not be able to change (or create) someone else's character.
+  const ownerId =
+    message.interactionMetadata?.user?.id ?? message.interaction?.user?.id;
+
+  if (ownerId && interaction.user.id !== ownerId) {
+    return interaction.reply({
+      content: "❌ Run `/start` to create your own character.",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
 
   await interaction.deferUpdate();
 
@@ -132,11 +147,35 @@ function handleQuit(interaction) {
 
 async function handleLogin(interaction, selections) {
   try {
-    await createProfile(interaction, selections);
+    const profile = await createProfile(interaction, selections);
+    const totalStats = calculateCombinedStats(profile);
+
+    const embed = new EmbedBuilder()
+      .setColor(COLORS.world)
+      .setTitle(`🎮 Welcome to RuneHero, ${interaction.user.displayName}!`)
+      .setDescription(
+        [
+          areaBand(`${selections["Class selected"]} • ${selections["Race"]}`),
+          `> Difficulty: **${selections["Difficulty selected"]}**`,
+          `> ${profile.class} — ${profile.race} • Lv. 1`,
+          "",
+          `❤️ **${totalStats.health}** HP   ⚔️ **${totalStats.attack}** ATK   🛡️ **${totalStats.defense}** DEF`,
+          `💨 **${totalStats.speed}** SPD   ✨ **${totalStats.magic}** MP   🪙 **${profile.gold}** gold`,
+        ].join("\n"),
+      )
+      .setFooter({ text: "Your character is saved — press Play to enter the world" });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("map_open")
+        .setLabel("▶ Play")
+        .setStyle(ButtonStyle.Success),
+    );
+
     return interaction.editReply({
-      content: `🎮 Welcome to RuneHero, ${interaction.user.globalName}! Your ${selections["Class selected"]} character has been created!`,
-      embeds: [],
-      components: [],
+      content: "",
+      embeds: [embed],
+      components: [row],
     });
   } catch (err) {
     await replyError(interaction, err, {
@@ -248,13 +287,14 @@ async function createProfile(interaction, selections) {
     targetProgress: "0/0",
     lastPlayed: new Date(),
     location: classCfg.startingLocation || { x: 8, y: 5 },
-    currentWorldMap: classCfg.startingMap || [],
-    portalReturn: { map: null, x: 0, y: 0 },
+    currentMapId: classCfg.startingMapId || "main_city",
+    portalReturn: { mapId: null, x: 0, y: 0 },
   };
 
   const newProfile = new Profile(profileData);
   if (newProfile.initializeStats) newProfile.initializeStats();
 
   await newProfile.save();
+  await newProfile.populate(["equipped.weapon", "equipped.armor"]);
   return newProfile;
 }

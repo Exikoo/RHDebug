@@ -11,6 +11,26 @@ export const EMOJI_MAP = {
   SHOP: "<:enter_shop:1414281517592477836>", // shop
   CYCLOPS: "<:cyclops_new:1414985794313261156>", // cyclops
   PUDDLE: "<:blood_puddle_red_4:1417102581406236713>", // blood puddle
+
+  // Monster types from monsterManager.js that still need an emoji. While
+  // they are missing the tile falls back to a wall, which keeps the grid
+  // aligned but looks impassable — upload the tile and paste the ID here.
+  // ORC: "<:orc:000000000000000000>",
+  // DRAGON: "<:red_dragon:000000000000000000>",
+};
+
+/**
+ * Optional per-class avatar emoji. Leave a class out (or null) and it will
+ * use EMOJI_MAP.P. Filling these in is the emoji-grid equivalent of the
+ * paper-doll sprite: upload e.g. `player_warrior.png` from the tileset and
+ * paste its ID.
+ *
+ * @type {Record<string, string|null>}
+ */
+export const PLAYER_EMOJI_BY_CLASS = {
+  Warrior: null,
+  Mage: null,
+  Archer: null,
 };
 
 export const LEGEND = {

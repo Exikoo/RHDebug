@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { calculateCombinedStats } from "../utils/playerUtils.js";
+import classes from "../config/classes.js";
 
 const profileSchema = new mongoose.Schema(
   {
@@ -320,11 +321,22 @@ profileSchema.methods.changeMap = async function (
   return this;
 };
 
+/**
+ * Builds the starting stats for a freshly created character.
+ *
+ * config/classes.js is the single source of truth for class stats (the
+ * character-creation panel and /help quote the same numbers), so this only
+ * applies the race modifier on top of the class base.
+ */
 profileSchema.methods.initializeStats = function () {
-  const classStats = {
-    Warrior: { health: 100, attack: 15, defense: 10, speed: 5, magic: 0 },
-    Mage: { health: 70, attack: 8, defense: 5, speed: 7, magic: 20 },
-    Archer: { health: 85, attack: 12, defense: 7, speed: 10, magic: 5 },
+  const classCfg = classes[String(this.class || "").toLowerCase()];
+  const baseStats = {
+    health: 100,
+    attack: 10,
+    defense: 5,
+    speed: 5,
+    magic: 0,
+    ...(classCfg?.baseStats ?? {}),
   };
 
   const raceModifiers = {
@@ -332,19 +344,18 @@ profileSchema.methods.initializeStats = function () {
     Orc: { health: 10, attack: 5, defense: 3, speed: -1, magic: -3 },
   };
 
+  // Permadeath changes the rules, not the numbers: the run ends when you
+  // die, so it does not need a stat penalty on top.
   const difficultyModifiers = {
-    Easy: { health: 20, attack: 5, defense: 5, speed: 5, magic: 5 },
-    Normal: { health: 0, attack: 0, defense: 0, speed: 0, magic: 0 },
-    Hard: { health: -10, attack: -2, defense: -2, speed: -2, magic: -2 },
+    Normal: {},
+    Permadeath: {},
   };
 
-  const baseStats = { ...classStats[this.class] };
-
-  for (const stat in raceModifiers[this.race]) {
-    baseStats[stat] += raceModifiers[this.race][stat];
+  for (const stat in raceModifiers[this.race] ?? {}) {
+    baseStats[stat] = (baseStats[stat] ?? 0) + raceModifiers[this.race][stat];
   }
 
-  for (const stat in difficultyModifiers[this.difficulty]) {
+  for (const stat in difficultyModifiers[this.difficulty] ?? {}) {
     baseStats[stat] += difficultyModifiers[this.difficulty][stat];
   }
 

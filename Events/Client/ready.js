@@ -1,6 +1,7 @@
 import { Client } from "discord.js";
 import { loadCommands } from "../../handlers/commandHandler.js";
 import { setupDatabase } from "../../db.js";
+import { reportEmojiHealth } from "../../utils/emojiCheck.js";
 
 export default {
   name: "clientReady",
@@ -13,6 +14,9 @@ export default {
       console.log(`Client logged in as ${client.user.tag}`);
 
       await loadCommands(client);
+
+      // The map is a grid of custom emojis: one bad ID breaks the screen.
+      reportEmojiHealth(client);
 
       await setupDatabase().catch((err) => {
         console.error("Setup failed:", err);
