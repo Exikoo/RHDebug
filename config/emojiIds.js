@@ -17,20 +17,17 @@
 
 /** @type {Record<string, string|null>} */
 export const SLOT_EMOJI_IDS = {
-  // empty cell frame
-  slot_empty: null,
-
-  // one per item in config/items.js — the name must be `slot_<itemId>`
-  slot_warrior_sword: null,
-  slot_mage_staff: null,
-  slot_ranger_bow: null,
-  slot_warrior_armor: null,
-  slot_mage_robe: null,
-  slot_ranger_leather: null,
-  slot_health_potion: null,
-  slot_mana_potion: null,
-  slot_bandage: null,
-  slot_arrows: null,
+  slot_empty: "1415418095123697817",
+  slot_warrior_sword: "1568277099196842054",
+  slot_mage_staff: "1568278296804724836",
+  slot_ranger_bow: "1568278297991712841",
+  slot_warrior_armor: "1568278299052871825",
+  slot_mage_robe: "1568278300814745713",
+  slot_ranger_leather: "1568278302676877333",
+  slot_health_potion: "1568278304052482190",
+  slot_mana_potion: "1568278305025564866",
+  slot_bandage: "1568278306875510824",
+  slot_arrows: "1568278307877687417",
 };
 
 /** A Discord snowflake: 17-20 digits, but be lenient about the exact length. */

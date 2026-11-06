@@ -291,7 +291,7 @@ function logSummary(successCount, errorCount, loadTime) {
 
 function logCriticalError(error) {
   console.error(
-    `${COLORS.red}${COLORS.bright}\n⚠️  Critical Error Loading Commands:${COLORS.reset}`,
+    `${COLORS.red}${COLORS.bright}\n⚠️ Critical Error Loading Commands:${COLORS.reset}`,
   );
   console.error(`${COLORS.red}${error.stack || error.message}${COLORS.reset}`);
 }
