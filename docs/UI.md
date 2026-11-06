@@ -30,6 +30,7 @@ Bag slots  Gold
 | Score title, area band, stat row, activity strip | `utils/screen.js`, `utils/uiTheme.js` |
 | D-pad and utility buttons | `utils/buttonComponents.js` |
 | Character sheet and bag | `utils/menuDisplays.js` |
+| Bag slot emoji IDs | `config/emojiIds.js` |
 | XP curve, level ups, vitals clamping | `utils/progression.js` |
 | Startup emoji validation | `utils/emojiCheck.js` |
 | One-command entry point | `Command/Interactions/start.js` |
@@ -61,6 +62,45 @@ and warns about malformed IDs, emojis the bot cannot see (not in any of its
 servers — the usual cause of the grid turning into raw `<:grass:123…>` text),
 and monster types in `monsterManager.js` that have no emoji yet
 (`ORC`, `DRAGON` currently fall back to a wall).
+
+## Bag screen
+
+Same one-emoji-per-cell rule as the map, so an empty cell and a filled cell
+occupy exactly one slot in the row:
+
+```
+Vlad's bag                     <- embed title
+```Inventory```               <- dark band
+🅱️🅱️🅱️🅱️🅱️🅱️🅱️🅱️            <- 1 emoji per slot, filled = framed item
+**Bag slots**
+2/8
+>Details of the item
+Warrior's Broadsword
+A heavy sword perfect for frontline combat
++8 attack
+```
+
+Buttons follow the reference layout:
+
+```
+row 1   Start | Trash | [selected item] | Use | Select
+row 2   slot 1 | slot 2 | slot 3 | slot 4 | ↩
+row 3   slot 5 | slot 6 | slot 7 | slot 8 | Quit
+```
+
+Start opens the character sheet, Select equips the highlighted gear, Use
+consumes/equips, the emoji button previews the selection.
+
+What it looks like: [`docs/emojis/bag-mock.png`](emojis/bag-mock.png) (rendered
+with the real emoji art).
+
+The 11 slot emojis are generated from the tileset and live in
+[`docs/emojis/`](emojis/README.md) with an upload table: `slot_empty` plus one
+`slot_<itemId>` per item in `config/items.js`. Each filled cell is
+`misc/slot.png` (frame, recoloured so it is visible on Discord's dark embed)
+with the item art inset to 26/32, exported at 128×128. Paste the IDs into
+`config/emojiIds.js`; until then the bag falls back to unicode glyphs and the
+startup check lists exactly what is missing.
 
 ## Gameplay bits that support the look
 

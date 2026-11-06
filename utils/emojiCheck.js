@@ -1,5 +1,7 @@
 import { EMOJI_MAP, PLAYER_EMOJI_BY_CLASS } from "../config/mapConfig.js";
+import { SLOT_EMOJI_IDS, pendingSlotEmojis } from "../config/emojiIds.js";
 import { MONSTER_TEMPLATES } from "../monsterManager.js";
+import items from "../config/items.js";
 
 /**
  * The map is made of custom emojis, so a single wrong or un-uploaded ID
@@ -47,6 +49,9 @@ export function checkConfiguredEmojis(client) {
     ...Object.entries(PLAYER_EMOJI_BY_CLASS ?? {})
       .filter(([, value]) => value)
       .map(([key, value]) => [`player ${key}`, value]),
+    ...Object.entries(SLOT_EMOJI_IDS ?? {})
+      .filter(([, id]) => id)
+      .map(([key, id]) => [`bag ${key}`, `<:${key}:${id}>`]),
   ];
 
   for (const [key, value] of entries) {
@@ -68,7 +73,13 @@ export function checkConfiguredEmojis(client) {
     (type) => !EMOJI_MAP[type],
   );
 
-  return { problems, ok, total, uncoveredMonsters };
+  // Items added to config/items.js without a matching `slot_<itemId>` entry
+  // have no framed art and fall back to a unicode glyph.
+  const uncoveredItems = Object.keys(items).filter(
+    (itemId) => !Object.hasOwn(SLOT_EMOJI_IDS, `slot_${itemId}`),
+  );
+
+  return { problems, ok, total, uncoveredMonsters, uncoveredItems };
 }
 
 /**
@@ -77,7 +88,7 @@ export function checkConfiguredEmojis(client) {
  */
 export function reportEmojiHealth(client) {
   try {
-    const { problems, ok, total, uncoveredMonsters } =
+    const { problems, ok, total, uncoveredMonsters, uncoveredItems } =
       checkConfiguredEmojis(client);
 
     if (problems.length === 0) {
@@ -94,6 +105,24 @@ export function reportEmojiHealth(client) {
             : "not in any server the bot is in";
         console.warn(`   • ${problem.key} → ${problem.name} (${why})`);
       }
+    }
+
+    const pendingBag = pendingSlotEmojis();
+    if (pendingBag.length > 0) {
+      console.warn(
+        `⚠️  Bag emojis not configured yet: ${pendingBag.length}/${
+          Object.keys(SLOT_EMOJI_IDS).length
+        } (${pendingBag.join(", ")}). ` +
+          "Upload docs/emojis/*.png and paste the IDs in config/emojiIds.js — " +
+          "until then the bag uses unicode fallbacks.",
+      );
+    }
+
+    if (uncoveredItems.length > 0) {
+      console.warn(
+        `⚠️  Items without a bag emoji: ${uncoveredItems.join(", ")} ` +
+          "(add a slot_<itemId> entry to EMOJI_MAP)",
+      );
     }
 
     if (uncoveredMonsters.length > 0) {

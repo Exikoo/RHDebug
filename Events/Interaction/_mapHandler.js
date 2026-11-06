@@ -179,6 +179,8 @@ const EXACT_HANDLERS = new Map([
   ["map_quit", quitGame],
   ["map_show_inventory", openBag],
   ["map_bag_use", (ctx) => runBagAction(ctx, "✅", useSelected)],
+  ["map_bag_select", (ctx) => runBagAction(ctx, "🛡️", equipSelected)],
+  ["map_bag_preview", showSelectedBagSlot],
   ["map_bag_trash", (ctx) => runBagAction(ctx, "🗑️", trashSelected)],
   ["map_show_stats", showStats],
   ["map_show_actions", showActions],
@@ -767,6 +769,30 @@ async function selectBagSlot(ctx) {
 
 const useSelected = (player, index) => player.useItem(index);
 const trashSelected = (player, index) => player.discardItem(index, 1);
+
+/**
+ * The bag's "Select" button: puts the highlighted gear on. Consumables
+ * cannot be equipped, so they stay on the "Use" button.
+ * @param {any} player Populated profile.
+ * @param {number} index
+ * @returns {Promise<string>}
+ */
+async function equipSelected(player, index) {
+  const item = player.inventory[index]?.item;
+  if (!item) throw new Error("That bag slot is empty.");
+
+  if (!["weapon", "armor", "accessory"].includes(item.type)) {
+    throw new Error(`${item.name} can't be equipped — press Use instead.`);
+  }
+
+  await player.equipItem(item._id);
+  return `You equipped ${item.name}.`;
+}
+
+/** The item preview button: re-renders the bag without changing anything. */
+function showSelectedBagSlot(ctx) {
+  return showBag(ctx, getBagSelection(ctx.userId));
+}
 
 /**
  * Shared flow for Use/Equip and Trash. These call model methods that need

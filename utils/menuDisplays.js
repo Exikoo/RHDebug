@@ -1,7 +1,7 @@
 import { EmbedBuilder } from "discord.js";
 import {
   getItemEmoji,
-  toSuperscript,
+  getSelectedSlotEmoji,
   EMPTY_SLOT_EMOJI,
 } from "./itemDisplay.js";
 import {
@@ -32,10 +32,12 @@ export function generateInventoryDisplay(playerProfile) {
 }
 
 /**
- * Builds the "bag" screen: a row of slot icons, the used/total slot
- * count, and a details block for whichever slot is currently selected.
- * Kept visually identical to the map screen so moving between them feels
- * like tabbing through one console UI.
+ * The bag screen.
+ *
+ * Layout copied from the reference: title, dark "Inventory" band, a row of
+ * framed slot emojis (one emoji per cell, so filled and empty cells line up),
+ * the slot count, then the details of the selected item under a `>` line.
+ *
  * @param {Object} playerProfile
  * @param {number|null} selectedIndex - Index into playerProfile.inventory, or null for no selection.
  * @returns {EmbedBuilder}
@@ -43,39 +45,61 @@ export function generateInventoryDisplay(playerProfile) {
 export function generateBagDisplay(playerProfile, selectedIndex = null) {
   const slots = playerProfile.inventory || [];
   const bagSlots = playerProfile.bagSlots || slots.length;
-  const displaySlots = Math.min(bagSlots, 9);
+  const visibleSlots = Math.min(bagSlots, 9);
 
-  const slotIcons = Array.from({ length: displaySlots }, (_, i) => {
+  const slotIcons = Array.from({ length: visibleSlots }, (_, i) => {
     const slot = slots[i];
-    if (!slot?.item) return EMPTY_SLOT_EMOJI;
-
-    const emoji = getItemEmoji(slot.item);
-    const badge = slot.quantity > 1 ? toSuperscript(slot.quantity) : "";
-    return `${emoji}${badge}`;
+    // One emoji per cell: the framed `slot_<item>` art, or the empty frame.
+    // The highlighted cell gets the `_sel` variant when it has been
+    // uploaded, which bakes the selection corners into the same 1-cell emoji.
+    if (i === selectedIndex) return getSelectedSlotEmoji(slot?.item ?? null);
+    return slot?.item ? getItemEmoji(slot.item) : EMPTY_SLOT_EMOJI;
   });
 
-  let desc = areaBand(`${playerProfile.username}'s bag`);
-  desc += `\n\n${slotIcons.join("  ")}\n\n`;
-  desc += `**Bag slots** ${slots.length}/${bagSlots}   •   **Gold** ${formatNumber(
-    playerProfile.gold,
-  )} 🪙\n\n`;
-
   const selectedSlot = selectedIndex !== null ? slots[selectedIndex] : null;
+  const selectedItem = selectedSlot?.item;
 
-  if (selectedSlot?.item) {
-    const item = selectedSlot.item;
-    desc += `>>> **${item.name}** x${selectedSlot.quantity}\n${
-      item.description || "No description available."
-    }`;
-  } else {
-    desc += ">>> *Select a slot below to inspect it.*";
-  }
+  const details = selectedItem
+    ? [
+        `${selectedItem.name}${
+          selectedSlot.quantity > 1 ? ` ×${selectedSlot.quantity}` : ""
+        }`,
+        selectedItem.description || "No description available.",
+        formatStats(selectedItem),
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : "*Select a slot below to inspect it.*";
+
+  const description = [
+    areaBand("Inventory"),
+    slotIcons.join(""),
+    "",
+    "**Bag slots**",
+    `${slots.length}/${bagSlots}`,
+    "",
+    ">Details of the item",
+    details,
+  ].join("\n");
 
   return new EmbedBuilder()
-    .setTitle(`🎒 Bag — ${playerProfile.username}`)
-    .setDescription(desc)
-    .setColor(COLORS.panel)
-    .setFooter({ text: `${formatNumber(playerProfile.gold)} 🪙 gold` });
+    .setTitle(`${playerProfile.username}'s bag`)
+    .setDescription(description)
+    .setColor(COLORS.panel);
+}
+
+/**
+ * "+8 attack · -1 speed" for gear, or nothing when the item has no stats
+ * (the description already explains what consumables do).
+ * @param {object} item
+ * @returns {string}
+ */
+function formatStats(item) {
+  const stats = Object.entries(item?.stats || {}).filter(([, value]) => value);
+  if (stats.length === 0) return "";
+  return stats
+    .map(([stat, value]) => `${value > 0 ? "+" : ""}${value} ${stat}`)
+    .join(" · ");
 }
 
 /**

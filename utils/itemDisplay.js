@@ -1,3 +1,5 @@
+import { customEmoji } from "../config/emojiIds.js";
+
 /**
  * Fallback emoji used when an item has no `emoji` field of its own,
  * keyed by item type. Extend this as new item types are added.
@@ -11,12 +13,11 @@ const TYPE_FALLBACK_EMOJI = {
 };
 
 /**
- * Emoji shown for an empty bag slot. Replace the ID below with your
- * own `:bg:` custom emoji's ID — enable Developer Mode in Discord,
- * right-click the emoji, "Copy Emoji ID", and paste it in here. Same
- * `<:name:id>` format used throughout config/mapConfig.js.
+ * Emoji shown for an empty bag slot: the `slot_empty` frame from the
+ * tileset (docs/emojis/slot_empty.png). Falls back to a unicode square
+ * until that emoji's ID is pasted into config/emojiIds.js.
  */
-export const EMPTY_SLOT_EMOJI = "<:bg:1550517511718436905>";
+export const EMPTY_SLOT_EMOJI = customEmoji("slot_empty", "▫️");
 
 /**
  * Returns the emoji to display for an item. Prefers the item's own
@@ -27,7 +28,32 @@ export const EMPTY_SLOT_EMOJI = "<:bg:1550517511718436905>";
  * @returns {string}
  */
 export function getItemEmoji(item) {
+  // Preferred: the framed `slot_<itemId>` emoji, which already includes the
+  // bag frame so a filled cell and an empty cell take the same width.
+  if (item?.itemId) {
+    const slotEmoji = customEmoji(`slot_${item.itemId}`);
+    if (slotEmoji) return slotEmoji;
+  }
+
   return item?.emoji || TYPE_FALLBACK_EMOJI[item?.type] || "❓";
+}
+
+/**
+ * Variant of an item's slot emoji with the selection corners baked in
+ * (`slot_<itemId>_sel`), used for the highlighted cell of the bag row.
+ * Optional: falls back to the normal slot emoji when that emoji has not
+ * been uploaded.
+ *
+ * @param {object|null} item
+ * @returns {string|null}
+ */
+export function getSelectedSlotEmoji(item) {
+  if (item?.itemId) {
+    const selected = customEmoji(`slot_${item.itemId}_sel`);
+    if (selected) return selected;
+  }
+  if (!item) return customEmoji("slot_empty_sel", EMPTY_SLOT_EMOJI);
+  return getItemEmoji(item);
 }
 
 const SUPERSCRIPT_DIGITS = {

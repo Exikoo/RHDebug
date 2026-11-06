@@ -270,83 +270,96 @@ export function createRequestedByButton(username) {
 }
 
 /**
- * Builds the bag/inventory action rows:
- *  - Row 1: up to 5 bag-slot buttons (slots 1-5), each showing the
- *    item's emoji, or a disabled placeholder if the slot is empty.
- *  - Row 2: up to 4 more bag-slot buttons (slots 6-9) + a back button,
- *    padded with disabled placeholders if the player has fewer slots.
- *  - Row 3: Use/Equip and Trash buttons for whichever slot is
- *    currently selected, plus the usual placeholder/quit buttons.
+ * The bag button grid, matching the reference screen:
  *
- * Display is capped at 9 slots (matching Discord's 5-per-row limit
- * across two rows). If bagSlots ever needs to exceed 9, this will need
- * pagination.
+ *   row 1  Start | Trash | [selected item] | Use | Select
+ *   row 2  slot 1 | slot 2 | slot 3 | slot 4 | back
+ *   row 3  slot 5 | slot 6 | slot 7 | slot 8 | Quit
+ *
+ * Every cell holds exactly one emoji (framed item art, or the empty-slot
+ * frame), so filled and empty buttons read as the same size. Slots past the
+ * eighth are not reachable from here — the default bag has 8 slots, so this
+ * only matters if bagSlots is raised (pagination would be the next step).
+ *
  * @param {Object} playerProfile
  * @param {number|null} selectedIndex
  * @returns {ActionRowBuilder[]}
  */
 export function createBagButtons(playerProfile, selectedIndex = null) {
   const slots = playerProfile.inventory || [];
-  const displaySlots = Math.min(playerProfile.bagSlots || slots.length, 9);
-
-  const slotButtons = [];
-  for (let i = 0; i < displaySlots; i++) {
-    const slot = slots[i];
-    const btn = new ButtonBuilder().setCustomId(`map_bag_slot_${i}`);
-
-    if (slot?.item) {
-      btn
-        .setEmoji(getItemEmoji(slot.item))
-        .setStyle(
-          i === selectedIndex ? ButtonStyle.Primary : ButtonStyle.Secondary,
-        );
-    } else {
-      btn
-        .setEmoji(EMPTY_SLOT_EMOJI)
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(true);
-    }
-
-    slotButtons.push(btn);
-  }
-
-  const row1 = new ActionRowBuilder().addComponents(...slotButtons.slice(0, 5));
-
-  const row2 = new ActionRowBuilder();
-  row2.addComponents(...slotButtons.slice(5, 9));
-  while (row2.components.length < 4) {
-    row2.addComponents(
-      createPlaceholderButton(`map_bag_placeholder_${row2.components.length}`),
-    );
-  }
-  row2.addComponents(createBackButtonComponent());
+  const bagSlots = Math.min(playerProfile.bagSlots || slots.length, 8);
 
   const selectedSlot = selectedIndex !== null ? slots[selectedIndex] : null;
-  const selectedItem = selectedSlot?.item;
-  const usableTypes = ["consumable", "weapon", "armor", "accessory"];
-  const canUse = Boolean(
-    selectedItem && usableTypes.includes(selectedItem.type),
-  );
-  const useLabel =
-    selectedItem && ["weapon", "armor", "accessory"].includes(selectedItem.type)
-      ? "Equip"
-      : "Use";
+  const selectedItem = selectedSlot?.item ?? null;
 
-  const row3 = new ActionRowBuilder().addComponents(
+  const canEquip = Boolean(
+    selectedItem &&
+      ["weapon", "armor", "accessory"].includes(selectedItem.type),
+  );
+
+  const row1 = new ActionRowBuilder().addComponents(
+    // "Start" opens the menu (character sheet), like the console button.
     new ButtonBuilder()
-      .setCustomId("map_bag_use")
-      .setLabel(useLabel)
-      .setStyle(ButtonStyle.Success)
-      .setDisabled(!canUse),
+      .setCustomId("map_show_stats")
+      .setLabel("Start")
+      .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId("map_bag_trash")
       .setLabel("Trash")
       .setStyle(ButtonStyle.Danger)
       .setDisabled(!selectedItem),
-    createPlaceholderButton("map_bag_placeholder_action_1"),
-    createPlaceholderButton("map_bag_placeholder_action_2"),
-    createQuitButton(),
+    // Preview of the highlighted item — pressing it just refreshes the bag.
+    new ButtonBuilder()
+      .setCustomId("map_bag_preview")
+      .setEmoji(selectedItem ? getItemEmoji(selectedItem) : EMPTY_SLOT_EMOJI)
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("map_bag_use")
+      .setLabel("Use")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(!selectedItem),
+    // "Select" equips the item (gear only); consumables go through Use.
+    new ButtonBuilder()
+      .setCustomId("map_bag_select")
+      .setLabel("Select")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(!canEquip),
   );
+
+  const slotButtons = [];
+  for (let i = 0; i < bagSlots; i++) {
+    const slot = slots[i];
+    slotButtons.push(
+      new ButtonBuilder()
+        .setCustomId(`map_bag_slot_${i}`)
+        .setEmoji(slot?.item ? getItemEmoji(slot.item) : EMPTY_SLOT_EMOJI)
+        .setStyle(
+          i === selectedIndex ? ButtonStyle.Primary : ButtonStyle.Secondary,
+        )
+        .setDisabled(!slot?.item),
+    );
+  }
+
+  const row2 = new ActionRowBuilder().addComponents(...slotButtons.slice(0, 4));
+  while (row2.components.length < 4) {
+    row2.addComponents(
+      createPlaceholderButton(`map_bag_pad_${row2.components.length}`),
+    );
+  }
+  row2.addComponents(
+    new ButtonBuilder()
+      .setCustomId("map_back_to_map")
+      .setEmoji("↩️")
+      .setStyle(ButtonStyle.Primary),
+  );
+
+  const row3 = new ActionRowBuilder().addComponents(...slotButtons.slice(4, 8));
+  while (row3.components.length < 4) {
+    row3.addComponents(
+      createPlaceholderButton(`map_bag_pad_b_${row3.components.length}`),
+    );
+  }
+  row3.addComponents(createQuitButton());
 
   return [row1, row2, row3];
 }
