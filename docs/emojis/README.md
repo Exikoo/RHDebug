@@ -37,9 +37,16 @@ output     = 32x32 → 128x128 nearest-neighbour, transparent background
 
 ## After uploading
 
-1. Developer Portal → your application → **Emojis** → upload all 11.
-2. Right-click each emoji → **Copy Emoji ID**.
-3. Paste the IDs into `config/emojiIds.js`:
+Two ways to get the IDs in place.
+
+**Automatic (recommended)** — the bot ships an admin command that does both
+the upload and the ID collection:
+
+```
+/emojis upload     # uploads any missing docs/emojis/*.png as application emojis
+```
+
+It replies with a ready-to-paste block:
 
 ```js
 export const SLOT_EMOJI_IDS = {
@@ -48,6 +55,13 @@ export const SLOT_EMOJI_IDS = {
   // ...
 };
 ```
+
+Paste it into `config/emojiIds.js`, restart, done. Running `/emojis` without
+`upload` just reports what is configured and what is missing.
+
+**Manual** — Developer Portal → your application → **Emojis** → upload the 11
+files (keep the file names), then paste each emoji's ID into
+`config/emojiIds.js`.
 
 Until an ID is filled in, that item falls back to its unicode glyph
 (`config/items.js` → `emoji`) and the bot logs a startup warning naming

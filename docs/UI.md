@@ -99,8 +99,9 @@ The 11 slot emojis are generated from the tileset and live in
 `slot_<itemId>` per item in `config/items.js`. Each filled cell is
 `misc/slot.png` (frame, recoloured so it is visible on Discord's dark embed)
 with the item art inset to 26/32, exported at 128×128. Paste the IDs into
-`config/emojiIds.js`; until then the bag falls back to unicode glyphs and the
-startup check lists exactly what is missing.
+`config/emojiIds.js`; `/emojis upload` (administrator) uploads the files and
+prints the block to paste. Until then the bag falls back to unicode glyphs and
+the startup check lists exactly what is missing.
 
 ## Gameplay bits that support the look
 
