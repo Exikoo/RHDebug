@@ -607,10 +607,10 @@ async function showCharacter(ctx) {
   );
   const potions = healers.reduce((total, slot) => total + slot.quantity, 0);
 
-  // Top strip = the first four things in the bag, like the reference.
-  const quick = inventory
-    .slice(0, 4)
-    .map((slot) => (slot.item ? getItemEmoji(slot.item) : EMPTY_SLOT_EMOJI));
+  // Top strip = the first four things in the bag, padded so the row is stable.
+  const quick = Array.from({ length: 4 }, (_, i) =>
+    inventory[i]?.item ? getItemEmoji(inventory[i].item) : EMPTY_SLOT_EMOJI,
+  );
 
   return interaction.editReply({
     embeds: [
@@ -725,9 +725,11 @@ async function showTalents(ctx) {
       generateTalentDisplay({
         player: ctx.player,
         selectedId,
-        quickBar: (ctx.player.inventory ?? [])
-          .slice(0, 4)
-          .map((slot) => emojiFor(slot.item)),
+        quickBar: Array.from({ length: 4 }, (_, i) =>
+          (ctx.player.inventory ?? [])[i]
+            ? emojiFor(ctx.player.inventory[i].item)
+            : EMPTY_SLOT_EMOJI,
+        ),
       }),
     ],
     components: createTalentButtons(ctx.player, selectedId),
