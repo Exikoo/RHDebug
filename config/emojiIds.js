@@ -45,38 +45,35 @@ export const UI_EMOJI_IDS = {
   gear_icon_armor: "1570062172455960607",
   gear_icon_weapon: "1570062173667856454",
   gear_icon_accessory: "1570062174829805660",
-  ui_quests: null,
-  ui_market: null,
-  ui_trophy: null,
-  ui_ranks: null,
+  ui_quests: "1570071476315627521",
+  ui_market: "1570071477481373706",
+  ui_trophy: "1570071478945194036",
+  ui_ranks: "1570071479973060700",
 };
 
-/** Profession icons (gathering and crafting). */
 export const PROFESSION_EMOJI_IDS = {
-  prof_mining: null,
-  prof_woodcutting: null,
-  prof_fishing: null,
-  prof_herbalism: null,
-  prof_smithing: null,
-  prof_crafting: null,
-  prof_cooking: null,
+  prof_mining: "1570071481872818276",
+  prof_woodcutting: "1570071483026505738",
+  prof_fishing: "1570071484041265275",
+  prof_herbalism: "1570071485370867814",
+  prof_smithing: "1570071486637539368",
+  prof_crafting: "1570071488319590462",
+  prof_cooking: "1570071490093781002",
 };
 
-/** Map tiles that are not part of the original 28. */
 export const TILE_EMOJI_IDS = {
-  tile_rock: null,
-  tile_chest: null,
+  tile_rock: "1570071491381297184",
+  tile_chest: "1570071492568555521",
 };
 
-/** The standalone demo screen: field tiles, sprite and bar segments. */
 export const DEMO_EMOJI_IDS = {
-  demo_grass_1: null,
-  demo_grass_2: null,
-  demo_player: null,
-  bar_hp: null,
-  bar_hp_empty: null,
-  bar_mana: null,
-  bar_mana_empty: null,
+  demo_grass_1: "1570071493302558752",
+  demo_grass_2: "1570071494992859326",
+  demo_player: "1570071495906959396",
+  bar_hp: "1570071496997605582",
+  bar_hp_empty: "1570071498834583582",
+  bar_mana: "1570071499640012911",
+  bar_mana_empty: "1570071501179453540",
 };
 
 export const EMOJI_GROUPS = {
@@ -105,7 +102,8 @@ function isValidId(id) {
  */
 export function emojiId(name) {
   for (const group of Object.values(EMOJI_GROUPS)) {
-    if (Object.hasOwn(group, name) && isValidId(group[name])) return String(group[name]);
+    if (Object.hasOwn(group, name) && isValidId(group[name]))
+      return String(group[name]);
   }
   return null;
 }
