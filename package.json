@@ -6,9 +6,11 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "test": "node scripts/check-buttons.mjs && node scripts/check-game.mjs && node scripts/check-features.mjs",
+    "demo": "node demo/index.js",
+    "test": "node scripts/check-buttons.mjs && node scripts/check-game.mjs && node scripts/check-features.mjs && node scripts/check-demo.mjs",
     "test:ui": "node scripts/check-buttons.mjs && node scripts/check-game.mjs",
-    "test:rules": "node scripts/check-features.mjs"
+    "test:rules": "node scripts/check-features.mjs",
+    "test:demo": "node scripts/check-demo.mjs"
   },
   "dependencies": {
     "discord.js": "^14.27.0",
