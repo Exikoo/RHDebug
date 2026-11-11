@@ -48,11 +48,28 @@ export const UI_EMOJI_IDS = {
   gear_icon_armor: null,
   gear_icon_weapon: null,
   gear_icon_accessory: null,
+  // map row: professions, quests, market, achievements, rankings
+  ui_quests: null,
+  ui_market: null,
+  ui_trophy: null,
+  ui_ranks: null,
+};
+
+/** Profession icons (gathering and crafting). */
+export const PROFESSION_EMOJI_IDS = {
+  prof_mining: null,
+  prof_woodcutting: null,
+  prof_fishing: null,
+  prof_herbalism: null,
+  prof_smithing: null,
+  prof_crafting: null,
+  prof_cooking: null,
 };
 
 export const EMOJI_GROUPS = {
   bag: SLOT_EMOJI_IDS,
   ui: UI_EMOJI_IDS,
+  professions: PROFESSION_EMOJI_IDS,
 };
 
 /** A Discord snowflake: 17-20 digits, but be lenient about the exact length. */

@@ -14,6 +14,14 @@ import { xpToNextLevel } from "./progression.js";
 import { customEmoji } from "../config/emojiIds.js";
 import { ATTRIBUTE_EFFECTS, TALENT_BY_ID } from "../config/talents.js";
 import {
+  PROFESSIONS,
+  PROFESSION_FALLBACK,
+  xpToNextProfessionLevel,
+} from "../config/professions.js";
+import { QUEST_BY_ID } from "../config/quests.js";
+import { professionOf } from "./professions.js";
+import { getItemByKey } from "./itemCache.js";
+import {
   rankOf,
   renderTalentTree,
   totalAttributes,
@@ -364,5 +372,195 @@ export function generateTalentDisplay({ player, selectedId = null, quickBar = []
   return new EmbedBuilder()
     .setColor(COLORS.panel)
     .setTitle(`${player.username}'s character`)
+    .setDescription(description);
+}
+
+// =====================================================================
+// Professions / quests / achievements / rankings / market
+// =====================================================================
+
+/** Profession icon, falling back to a unicode glyph until it is uploaded. */
+export function professionEmoji(id) {
+  return customEmoji(PROFESSIONS[id]?.emoji ?? `prof_${id}`, PROFESSION_FALLBACK[id] ?? "❔");
+}
+
+/** Small progress bar that survives Discord's font (`▰▱`). */
+function bar(value, max, width = 8) {
+  const filled = Math.max(0, Math.min(width, Math.round((value / Math.max(1, max)) * width)));
+  return "▰".repeat(filled) + "▱".repeat(width - filled);
+}
+
+/**
+ * Professions screen: one line per profession with level and xp bar.
+ * @param {{player: any, professions: Array<object>}} view
+ */
+export function generateProfessionDisplay({ player, professions }) {
+  const gather = professions.filter((p) => p.kind === "gather");
+  const craft = professions.filter((p) => p.kind === "craft");
+
+  const line = (entry) =>
+    `${professionEmoji(entry.id)} **${entry.name}** Lv. ${entry.level} ${bar(entry.xp, entry.needed)} ${entry.xp}/${entry.needed}`;
+
+  const description = [
+    areaBand("Professions"),
+    `🧍 ${player.username} · Lv. ${player.level}`,
+    "",
+    "**Gathering**",
+    ...gather.map(line),
+    "",
+    "**Crafting**",
+    ...craft.map(line),
+    "",
+    "*Gathering has a short cooldown. Crafting spends the materials in your bag.*",
+  ].join("\n");
+
+  return new EmbedBuilder()
+    .setColor(COLORS.panel)
+    .setTitle(`${player.username}'s professions`)
+    .setDescription(description);
+}
+
+/**
+ * Crafting screen for one profession.
+ * @param {{player: any, professionId: string, recipes: Array<object>}} view
+ *   each recipe carries `{ id, name, cost, stock, affordable, requiresLevel, level }`
+ */
+export function generateCraftDisplay({ player, professionId, recipes }) {
+  const profession = PROFESSIONS[professionId];
+  const emoji = professionEmoji(professionId);
+  const state = professionOf(player, professionId);
+
+  const lines = recipes.map((recipe) => {
+    const cost = Object.entries(recipe.cost)
+      .map(([key, quantity]) => {
+        const doc = getItemByKey(key);
+        const held = recipe.stock?.[key] ?? 0;
+        return `${doc?.name ?? key} ${held}/${quantity}`;
+      })
+      .join(" · ");
+    const status = recipe.affordable ? "✅" : "❌";
+    return `${status} **${recipe.name}** — ${recipe.description ?? ""}\n> ${cost}`;
+  });
+
+  const description = [
+    areaBand(`${profession.name} bench`),
+    `${emoji} **${profession.name}** Lv. ${state.level} ${bar(state.xp, xpToNextProfessionLevel(state.level))} ${state.xp}/${xpToNextProfessionLevel(state.level)}`,
+    "",
+    ...lines,
+    "",
+    "*Press a recipe to craft it.*",
+  ].join("\n");
+
+  return new EmbedBuilder()
+    .setColor(COLORS.panel)
+    .setTitle(`${player.username}'s ${profession.name.toLowerCase()}`)
+    .setDescription(description);
+}
+
+/**
+ * Quest board.
+ * @param {{player: any, quests: Array<object>, dailyReady: boolean}} view
+ */
+export function generateQuestDisplay({ player, quests, dailyReady }) {
+  const lines = quests.map((quest) => {
+    const template = QUEST_BY_ID.get(quest.id);
+    const goal = quest.goal ?? template?.goal ?? 1;
+    const progress = Math.min(goal, quest.progress ?? 0);
+    const done = progress >= goal;
+    return `${done ? "✅" : "▫️"} **${template?.title ?? quest.id}**${quest.daily ? " 🌙" : ""}\n> ${template?.text ?? ""} — ${progress}/${goal}`;
+  });
+
+  const description = [
+    areaBand("Quest board"),
+    `🧍 ${player.username} · 🪙 ${player.gold ?? 0}`,
+    "",
+    quests.length > 0 ? lines.join("\n") : "*No quests taken yet.*",
+    "",
+    `**Daily bounty** — ${dailyReady ? "available" : "already taken today"}`,
+    `**Completed** — ${player.counters?.quests ?? 0}`,
+  ].join("\n");
+
+  return new EmbedBuilder()
+    .setColor(COLORS.panel)
+    .setTitle(`${player.username}'s quests`)
+    .setDescription(description);
+}
+
+/**
+ * Achievements screen.
+ * @param {{player: any, groups: Array<object>, filter: string, progress: object}} view
+ */
+export function generateAchievementDisplay({ player, groups, filter, progress }) {
+  const shown = filter === "all" ? groups : groups.filter((a) => a.category === filter);
+  const lines = shown.map((achievement) => {
+    const icon = achievement.earned ? "🏆" : achievement.ready ? "⭐" : "▫️";
+    return `${icon} **${achievement.name}** — ${achievement.description} *(${achievement.points} pts)*`;
+  });
+
+  const description = [
+    areaBand("Achievements"),
+    `**${progress.earned}/${progress.total}** earned · **${progress.points}/${progress.maxPoints}** points`,
+    "",
+    lines.length > 0 ? lines.join("\n") : "*Nothing in this category yet.*",
+  ].join("\n");
+
+  return new EmbedBuilder()
+    .setColor(COLORS.panel)
+    .setTitle(`${player.username}'s achievements`)
+    .setDescription(description);
+}
+
+/**
+ * Rankings screen.
+ * @param {{player: any, rows: Array<object>, sort: string}} view
+ *   rows: `{ name, level, value, unit }`
+ */
+export function generateRankingDisplay({ player, rows, sort }) {
+  const titles = {
+    level: "Top by level",
+    professions: "Top by profession levels",
+    achievements: "Top by achievement points",
+  };
+
+  const lines = rows.map(
+    (row, index) => `**${index + 1}.** ${row.name} — Lv. ${row.level} · ${row.value} ${row.unit}`,
+  );
+
+  const description = [
+    areaBand("Rankings"),
+    `**${titles[sort] ?? titles.level}**`,
+    "",
+    lines.length > 0 ? lines.join("\n") : "*No ranked players yet.*",
+    "",
+    `*Your rank: #${rows.findIndex((row) => row.id === player.userId) + 1 || "—"}*`,
+  ].join("\n");
+
+  return new EmbedBuilder()
+    .setColor(COLORS.panel)
+    .setTitle("Hall of fame")
+    .setDescription(description);
+}
+
+/**
+ * Market board.
+ * @param {{player: any, listings: Array<object>, myCount: number}} view
+ */
+export function generateMarketDisplay({ player, listings, myCount = 0 }) {
+  const lines = listings.map(
+    (row) => `**${row.name}** ×${row.quantity} — ${row.price} 🪙 *(${row.sellerName})*`,
+  );
+
+  const description = [
+    areaBand("Market"),
+    `🪙 **${player.gold ?? 0}** · your listings: **${myCount}**`,
+    "",
+    lines.length > 0 ? lines.join("\n") : "*The market is empty — list something!*",
+    "",
+    "*Buy takes the gold from you and pays the seller. Sell lists the item you picked in the bag.*",
+  ].join("\n");
+
+  return new EmbedBuilder()
+    .setColor(COLORS.panel)
+    .setTitle("Player market")
     .setDescription(description);
 }

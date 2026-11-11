@@ -21,13 +21,25 @@ import { isEnterable, tileAt } from "../../utils/mapUtils.js";
 import { replyError } from "../../utils/errorHandler.js";
 
 import {
+  generateAchievementDisplay,
   generateBagDisplay,
   generateCharacterDisplay,
+  generateCraftDisplay,
+  generateMarketDisplay,
+  generateProfessionDisplay,
+  generateQuestDisplay,
+  generateRankingDisplay,
   generateTalentDisplay,
 } from "../../utils/menuDisplays.js";
 
 import {
+  createAchievementButtons,
+  createCraftButtons,
+  createMarketButtons,
   createNavigationButtons,
+  createProfessionButtons,
+  createQuestButtons,
+  createRankingButtons,
   createBackButton,
   createBagButtons,
   createCharacterButtons,
@@ -45,6 +57,31 @@ import { LEGEND } from "../../config/mapConfig.js";
 import classes from "../../config/classes.js";
 import { TALENT_BY_ID } from "../../config/talents.js";
 import { customEmoji } from "../../config/emojiIds.js";
+import { CRAFT_IDS, GATHER_IDS, PROFESSIONS } from "../../config/professions.js";
+import { MAX_QUESTS } from "../../config/quests.js";
+import {
+  activeQuests,
+  acceptDaily,
+  acceptQuest,
+  abandonQuest,
+  dailyAvailable,
+  progressQuests,
+} from "../../utils/quests.js";
+import {
+  achievementGroups,
+  achievementProgress,
+  awardAchievements,
+} from "../../utils/achievements.js";
+import {
+  addProfessionXp,
+  cooldownLeft,
+  craft,
+  gather,
+  professionList,
+  professionOf,
+} from "../../utils/professions.js";
+import { countItem } from "../../utils/inventory.js";
+import { buyListing, countListingsBy, listItem, marketRows } from "../../utils/market.js";
 import {
   learnTalent,
   spendAttributePoint,
@@ -208,6 +245,14 @@ const EXACT_HANDLERS = new Map([
   ["map_show_talents", showTalents],
   ["map_talent_learn", learnSelectedTalent],
   ["map_use_potion", usePotion],
+  ["map_show_professions", showProfessions],
+  ["map_show_quests", showQuests],
+  ["map_show_achievements", showAchievements],
+  ["map_show_rankings", showRankings],
+  ["map_show_market", showMarket],
+  ["map_quest_new", acceptNewQuest],
+  ["map_quest_daily", takeDailyQuest],
+  ["map_market_sell", sellOnMarket],
   // Aliases so one message never repeats a custom id (Discord rejects that).
   ["map_char_bag", openBag],
   ["map_char_done", showMap],
@@ -223,6 +268,13 @@ const PREFIX_HANDLERS = [
   ["map_talent_", selectTalent],
   ["map_attr_", spendAttribute],
   ["map_gear_", showGearItem],
+  ["map_gather_", gatherWith],
+  ["map_craft_", openBench],
+  ["map_recipe_", craftRecipe],
+  ["map_quest_drop_", dropQuest],
+  ["map_ach_", filterAchievements],
+  ["map_rank_", sortRankings],
+  ["map_market_buy_", buyFromMarket],
 ];
 
 function resolveHandler(customId) {
@@ -469,6 +521,19 @@ async function handleCombat(ctx, position, monsterType, deadKeys) {
           monster.experience,
           stats,
         );
+
+        // Kills feed quests, achievements and the boss counter.
+        const isBoss = Boolean(MONSTER_TEMPLATES[monsterType]?.boss);
+        if (isBoss) {
+          player.counters = player.counters ?? {};
+          player.counters.bosses = (player.counters.bosses ?? 0) + 1;
+        }
+        for (const note of applyProgress(
+          { player },
+          { type: "kill", target: isBoss ? "boss" : null, amount: 1, counter: "kills" },
+        )) {
+          addCombatMessage(player.userId, note);
+        }
         player.gold += Math.floor(monster.experience / 2);
         clearTarget(player);
         addCombatMessage(
@@ -494,6 +559,8 @@ async function handleCombat(ctx, position, monsterType, deadKeys) {
     clampVitals(player, stats);
 
     if (player.currentHealth <= 0) {
+      player.counters = player.counters ?? {};
+      player.counters.deaths = (player.counters.deaths ?? 0) + 1;
       const { lost } = await respawnAfterDeath(player, stats);
       addCombatMessage(
         player.userId,
@@ -1096,3 +1163,331 @@ setInterval(() => {
     if (now - entry.touched > BAG_SELECTION_TTL) talentSelectionMap.delete(userId);
   }
 }, 300000).unref();
+
+// =====================================================================
+// Professions / quests / achievements / rankings / market
+// =====================================================================
+
+/**
+ * Runs every "something happened" side effect and returns the lines worth
+ * telling the player about.
+ *
+ * @param {Ctx} ctx
+ * @param {{type: string, target: string|null, amount?: number, counter?: string}} event
+ * @returns {string[]}
+ */
+function applyProgress(ctx, event) {
+  const { player } = ctx;
+  const notes = [];
+
+  player.counters = player.counters ?? {};
+  if (event.counter) {
+    player.counters[event.counter] = (player.counters[event.counter] ?? 0) + 1;
+  }
+
+  const completed = progressQuests(player, event.type, event.target, event.amount ?? 1);
+  for (const quest of completed) {
+    notes.push(
+      `📜 **${quest.title}** complete — +${quest.gold} 🪙, +${quest.xp} XP${
+        quest.levels > 0 ? ` · ⭐ level ${player.level}` : ""
+      }`,
+    );
+  }
+
+  const earned = awardAchievements(player);
+  for (const achievement of earned) {
+    notes.push(`🏆 **${achievement.name}** unlocked (+${achievement.points} pts)`);
+  }
+
+  return notes;
+}
+
+/** Professions hub. */
+async function showProfessions(ctx) {
+  const { player, interaction } = ctx;
+
+  return interaction.editReply({
+    embeds: [generateProfessionDisplay({ player, professions: professionList(player) })],
+    components: createProfessionButtons(),
+  });
+}
+
+/** Gather button: yields materials, xp, quest progress and achievements. */
+async function gatherWith(ctx) {
+  const { player, interaction } = ctx;
+  const professionId = interaction.customId.slice("map_gather_".length);
+  if (!GATHER_IDS.includes(professionId)) {
+    return interaction.followUp({ content: "❌ Unknown profession.", flags: EPHEMERAL });
+  }
+
+  const result = gather(player, professionId);
+  const notes = result.ok
+    ? applyProgress(ctx, {
+        type: "gather",
+        target: result.yields?.[0]?.key ?? null,
+        amount: result.yields?.reduce((sum, entry) => sum + entry.quantity, 0) ?? 1,
+        counter: "gathers",
+      })
+    : [];
+
+  if (result.ok) await player.save();
+
+  return Promise.all([
+    showProfessions(ctx),
+    interaction.followUp({
+      content: `${result.ok ? "⛏️" : "⏳"} ${result.message}${notes.length ? `\n${notes.join("\n")}` : ""}`,
+      flags: EPHEMERAL,
+    }),
+  ]);
+}
+
+/** Crafting bench screen. */
+async function openBench(ctx) {
+  const { player, interaction } = ctx;
+  const professionId = interaction.customId.slice("map_craft_".length);
+  if (!CRAFT_IDS.includes(professionId)) {
+    return interaction.followUp({ content: "❌ Unknown profession.", flags: EPHEMERAL });
+  }
+
+  const items = await getItemMap();
+  const profession = PROFESSIONS[professionId];
+  const recipes = profession.recipes.map((recipe) => {
+    const stock = Object.fromEntries(
+      Object.keys(recipe.cost).map((key) => [key, countItem(player, key, items)]),
+    );
+    const affordable = Object.entries(recipe.cost).every(
+      ([key, quantity]) => (stock[key] ?? 0) >= quantity,
+    );
+    return { ...recipe, stock, affordable };
+  });
+
+  return interaction.editReply({
+    embeds: [generateCraftDisplay({ player, professionId, recipes })],
+    components: createCraftButtons(professionId, recipes),
+  });
+}
+
+/** Craft one recipe from the open bench. */
+async function craftRecipe(ctx) {
+  const { player, interaction } = ctx;
+  const rest = interaction.customId.slice("map_recipe_".length);
+  const separator = rest.indexOf("_");
+  const professionId = rest.slice(0, separator);
+  const recipeId = rest.slice(separator + 1);
+
+  const result = craft(player, professionId, recipeId);
+  const notes = result.ok
+    ? applyProgress(ctx, {
+        type: "craft",
+        target: result.output?.key ?? null,
+        amount: result.output?.quantity ?? 1,
+        counter: "crafts",
+      })
+    : [];
+
+  if (result.ok) await player.save();
+
+  // Re-render the same bench (openBench reads the id from the interaction).
+  const fake = { ...ctx, interaction: { ...interaction, customId: `map_craft_${professionId}` } };
+  return Promise.all([
+    openBench(fake),
+    interaction.followUp({
+      content: `${result.ok ? "🛠️" : "❌"} ${result.message}${notes.length ? `\n${notes.join("\n")}` : ""}`,
+      flags: EPHEMERAL,
+    }),
+  ]);
+}
+
+/** Quest board. */
+async function showQuests(ctx) {
+  const { player, interaction } = ctx;
+
+  return interaction.editReply({
+    embeds: [
+      generateQuestDisplay({
+        player,
+        quests: activeQuests(player),
+        dailyReady: dailyAvailable(player),
+      }),
+    ],
+    components: createQuestButtons(activeQuests(player), dailyAvailable(player)),
+  });
+}
+
+/** "New quest" — takes a random quest you are not holding. */
+async function acceptNewQuest(ctx) {
+  const { player, interaction } = ctx;
+  const result = acceptQuest(player);
+  if (result.ok) await player.save();
+
+  return Promise.all([
+    showQuests(ctx),
+    interaction.followUp({
+      content: `${result.ok ? "📜" : "❌"} ${result.message}`,
+      flags: EPHEMERAL,
+    }),
+  ]);
+}
+
+/** Daily bounty. */
+async function takeDailyQuest(ctx) {
+  const { player, interaction } = ctx;
+  const result = acceptDaily(player);
+  if (result.ok) await player.save();
+
+  return Promise.all([
+    showQuests(ctx),
+    interaction.followUp({
+      content: `${result.ok ? "🌙" : "❌"} ${result.message}`,
+      flags: EPHEMERAL,
+    }),
+  ]);
+}
+
+/** Drops the quest in slot `map_quest_drop_<n>`. */
+async function dropQuest(ctx) {
+  const { player, interaction } = ctx;
+  const index = Number(interaction.customId.slice("map_quest_drop_".length));
+  const result = abandonQuest(player, Number.isFinite(index) ? index : -1);
+  if (result.ok) await player.save();
+
+  return Promise.all([
+    showQuests(ctx),
+    interaction.followUp({
+      content: `${result.ok ? "🗑️" : "❌"} ${result.message}`,
+      flags: EPHEMERAL,
+    }),
+  ]);
+}
+
+/** Achievements, optionally filtered by category. */
+async function showAchievements(ctx, filter = "all") {
+  const { player, interaction } = ctx;
+
+  return interaction.editReply({
+    embeds: [
+      generateAchievementDisplay({
+        player,
+        groups: achievementGroups(player),
+        filter,
+        progress: achievementProgress(player),
+      }),
+    ],
+    components: createAchievementButtons(filter),
+  });
+}
+
+/** `map_ach_<category>`. */
+async function filterAchievements(ctx) {
+  const filter = ctx.interaction.customId.slice("map_ach_".length);
+  return showAchievements(ctx, filter || "all");
+}
+
+/** Top players by level, profession levels or achievement points. */
+async function fetchRankingRows(sort) {
+  const profiles = await Profile.find({})
+    .sort({ level: -1, experience: -1 })
+    .limit(50)
+    .lean();
+
+  const professionLevel = (professions, id) =>
+    professions?.get?.(id)?.level ?? professions?.[id]?.level ?? 1;
+
+  const rows = profiles.map((profile) => {
+    const levels = GATHER_IDS.concat(CRAFT_IDS).map((id) =>
+      professionLevel(profile.professions, id),
+    );
+    return {
+      id: profile.userId,
+      name: profile.username,
+      level: profile.level ?? 1,
+      totalProfession: levels.reduce((sum, level) => sum + level, 0),
+      achievementPoints: (profile.achievements ?? []).length,
+    };
+  });
+
+  if (sort === "professions") {
+    rows.sort((a, b) => b.totalProfession - a.totalProfession || b.level - a.level);
+    return rows.slice(0, 10).map((row) => ({ ...row, value: row.totalProfession, unit: "job levels" }));
+  }
+
+  if (sort === "achievements") {
+    rows.sort((a, b) => b.achievementPoints - a.achievementPoints || b.level - a.level);
+    return rows.slice(0, 10).map((row) => ({ ...row, value: row.achievementPoints, unit: "achievements" }));
+  }
+
+  return rows.slice(0, 10).map((row) => ({ ...row, value: row.level, unit: "level" }));
+}
+
+async function showRankings(ctx, sort = "level") {
+  const { player, interaction } = ctx;
+  const rows = await fetchRankingRows(sort);
+
+  return interaction.editReply({
+    embeds: [generateRankingDisplay({ player, rows, sort })],
+    components: createRankingButtons(sort),
+  });
+}
+
+async function sortRankings(ctx) {
+  const sort = ctx.interaction.customId.slice("map_rank_".length);
+  return showRankings(ctx, ["level", "professions", "achievements"].includes(sort) ? sort : "level");
+}
+
+/** Market board. */
+async function showMarket(ctx) {
+  const { player, interaction } = ctx;
+  const [listings, myCount] = await Promise.all([
+    marketRows(),
+    countListingsBy(player.userId),
+  ]);
+
+  return interaction.editReply({
+    embeds: [generateMarketDisplay({ player, listings, myCount })],
+    components: createMarketButtons(listings),
+  });
+}
+
+/** Buys the listing embedded in the button id. */
+async function buyFromMarket(ctx) {
+  const { player, interaction } = ctx;
+  const listingId = interaction.customId.slice("map_market_buy_".length);
+
+  const result = await buyListing(player, listingId);
+  return Promise.all([
+    showMarket(ctx),
+    interaction.followUp({
+      content: `${result.ok ? "🛒" : "❌"} ${result.message}`,
+      flags: EPHEMERAL,
+    }),
+  ]);
+}
+
+/** Lists the item currently selected in the bag. */
+async function sellOnMarket(ctx) {
+  const { player, interaction } = ctx;
+  const index = getBagSelection(ctx.userId);
+  const items = await getItemMap();
+
+  const slot = index === null ? null : player.inventory?.[index];
+  const doc = slot ? items.get(idOf(slot.item)) : null;
+
+  if (!doc) {
+    return interaction.followUp({
+      content: "❌ Open the bag, pick an item, then press Sell here.",
+      flags: EPHEMERAL,
+    });
+  }
+
+  const quantity = Math.min(slot.quantity ?? 1, 1);
+  const result = await listItem(player, doc.itemId, quantity);
+  clearBagSelection(ctx.userId);
+
+  return Promise.all([
+    showMarket(ctx),
+    interaction.followUp({
+      content: `${result.ok ? "🏷️" : "❌"} ${result.message}`,
+      flags: EPHEMERAL,
+    }),
+  ]);
+}

@@ -62,6 +62,45 @@ const profileSchema = new mongoose.Schema(
     talentPoints: { type: Number, default: 1, min: 0 },
     // talentId -> rank; everything else about talents is derived.
     talents: { type: Map, of: Number, default: () => new Map() },
+
+    // professionId -> { xp, level } (see config/professions.js)
+    professions: {
+      type: Map,
+      of: new mongoose.Schema(
+        {
+          xp: { type: Number, default: 0, min: 0 },
+          level: { type: Number, default: 1, min: 1 },
+        },
+        { _id: false },
+      ),
+      default: () => new Map(),
+    },
+
+    // Lifetime counters used by achievements, quests and rankings.
+    counters: {
+      kills: { type: Number, default: 0, min: 0 },
+      bosses: { type: Number, default: 0, min: 0 },
+      gathers: { type: Number, default: 0, min: 0 },
+      crafts: { type: Number, default: 0, min: 0 },
+      quests: { type: Number, default: 0, min: 0 },
+      dailies: { type: Number, default: 0, min: 0 },
+      deaths: { type: Number, default: 0, min: 0 },
+    },
+
+    achievements: { type: [String], default: [] },
+
+    quests: [
+      {
+        id: { type: String, required: true },
+        progress: { type: Number, default: 0, min: 0 },
+        goal: { type: Number, default: 1, min: 1 },
+        type: { type: String, required: true },
+        target: { type: String, default: null },
+        daily: { type: Boolean, default: false },
+        _id: false,
+      },
+    ],
+    dailyQuestAt: { type: Date, default: null },
     equipped: {
       weapon: { type: mongoose.Schema.Types.ObjectId, ref: "Item" },
       armor: { type: mongoose.Schema.Types.ObjectId, ref: "Item" },
@@ -79,9 +118,6 @@ const profileSchema = new mongoose.Schema(
     ],
     skills: [
       // TODO: add skills
-    ],
-    achievements: [
-      // TODO: add achievements
     ],
     currentTarget: { type: String, default: null },
     targetProgress: { type: String, default: "0/0" },

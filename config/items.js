@@ -96,4 +96,78 @@ export default {
     value: 1,
     rarity: "common",
   },
+
+  // ---------------------------------------------------------------- materials
+  // Gathered with a profession (see config/professions.js). `material` items
+  // are never equipped and never used, only consumed by recipes and quests.
+  copper_ore: {
+    name: "Copper Ore",
+    type: "material",
+    emoji: "🪨",
+    description: "Raw copper, still warm from the seam",
+    value: 4,
+    rarity: "common",
+  },
+  oak_log: {
+    name: "Oak Log",
+    type: "material",
+    emoji: "🪵",
+    description: "A straight length of oak",
+    value: 3,
+    rarity: "common",
+  },
+  river_fish: {
+    name: "River Fish",
+    type: "material",
+    emoji: "🐟",
+    description: "Fresh from the shallows — cook it or sell it",
+    value: 5,
+    rarity: "common",
+  },
+  bloodroot: {
+    name: "Bloodroot",
+    type: "material",
+    emoji: "🌿",
+    description: "A red-stemmed herb used by healers",
+    value: 6,
+    rarity: "common",
+  },
+
+  // ------------------------------------------------------------------ crafted
+  iron_sword: {
+    name: "Iron Sword",
+    type: "weapon",
+    emoji: "🗡️",
+    description: "Forged from copper and oak — better than the starter blade",
+    stats: { attack: 14 },
+    value: 90,
+    rarity: "uncommon",
+  },
+  hunter_cloak: {
+    name: "Hunter's Cloak",
+    type: "armor",
+    emoji: "🧥",
+    description: "Stitched leather and hide",
+    stats: { defense: 7, speed: 2 },
+    value: 80,
+    rarity: "uncommon",
+  },
+  cooked_fish: {
+    name: "Cooked Fish",
+    type: "consumable",
+    emoji: "🍲",
+    description: "Restores 45 health",
+    stats: { health: 45 },
+    value: 18,
+    rarity: "common",
+  },
+  herb_tonic: {
+    name: "Herb Tonic",
+    type: "consumable",
+    emoji: "🧉",
+    description: "Restores 30 health and 15 mana",
+    stats: { health: 30, magic: 15 },
+    value: 22,
+    rarity: "common",
+  },
 };

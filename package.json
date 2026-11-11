@@ -5,7 +5,10 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node scripts/check-buttons.mjs && node scripts/check-game.mjs && node scripts/check-features.mjs",
+    "test:ui": "node scripts/check-buttons.mjs && node scripts/check-game.mjs",
+    "test:rules": "node scripts/check-features.mjs"
   },
   "dependencies": {
     "discord.js": "^14.27.0",
