@@ -1,7 +1,7 @@
 # Emojis to upload
 
-49 names in total: 28 original, 9 built from the tileset by
-`npm run build:emojis`, 11 optional icons and 1 gold counter (see the tables).
+49 names, and **every one of them now has art on disk** — `npm run build:emojis`
+rebuilds the 21 tileset-derived ones, so `/emojis upload` has nothing to skip.
 
 Three sets, all generated from `tileset/` (or drawn as UI chrome) and named
 `slot_*` / `talent_*` / chrome names, so the code finds them without any extra
@@ -89,51 +89,30 @@ amulet (so they read as white icons on the dark embed).
 
 # Profession / feature emojis — upload list
 
-These eleven are purely optional polish: every one of them falls back to the
-unicode glyph in brackets, and the screens are designed around that fallback,
-so nothing breaks while the slots are `null`.
+All thirteen come out of `npm run build:emojis` as well (tileset art, or drawn
+in the same palette when the set has nothing usable).
 
-| # | Emoji name | Used for | Fallback |
+| # | Emoji name | Used for | Built from / art |
 | --- | --- | --- | --- |
-| 29 | `prof_mining` | Mining profession line + gather button | ⛏️ |
-| 30 | `prof_woodcutting` | Woodcutting line + button | 🪓 |
-| 31 | `prof_fishing` | Fishing line + button | 🎣 |
-| 32 | `prof_herbalism` | Herbalism line + button | 🌿 |
-| 33 | `prof_smithing` | Smithing bench + professions map button | 🔨 |
-| 34 | `prof_crafting` | Crafting bench | 🧵 |
-| 35 | `prof_cooking` | Cooking bench | 🍳 |
-| 36 | `ui_quests` | map row → quest board | 📜 |
-| 37 | `ui_market` | map row → player market | 🏪 |
-| 38 | `ui_trophy` | map row → achievements | 🏆 |
-| 39 | `ui_ranks` | map row → rankings | 🏅 |
+| 29 | `prof_mining` | Mining line + gather button | `item/misc/misc_tremorstones.png` |
+| 30 | `prof_woodcutting` | Woodcutting | `item/weapon/battle_axe1.png` |
+| 31 | `prof_fishing` | Fishing | `item/rod/rod00.png` |
+| 32 | `prof_herbalism` | Herbalism | `dngn/decor/flower_patch_0.png` |
+| 33 | `prof_smithing` | Smithing bench + professions map button | drawn: hammer |
+| 34 | `prof_crafting` | Crafting bench | `item/book/cloth.png` |
+| 35 | `prof_cooking` | Cooking bench | `item/food/bread_ration.png` |
+| 36 | `ui_quests` | map row → quest board | `item/parchment/base_parchment_low_level.png` |
+| 37 | `ui_market` | map row → player market | `dngn/shops/shop_general.png` |
+| 38 | `ui_trophy` | achievements | drawn: gold cup |
+| 39 | `ui_ranks` | rankings | drawn: podium |
+| 40 | `ui_gold` | the gold counter | `item/gold/01.png` |
 
-Reuse one of the existing tiles if you upload custom art: the four `ui_*` read
-best as a single bright glyph on the dark panel, and the seven `prof_*` as a
-32×32 tileset glyph scaled to 128×128 (same pipeline as the bag cells).
+Three of them are drawn because the DCSS tileset has no pickaxe, no hammer and
+no trophy: they use the same pixel grid and palette as the rest (dark frame,
+gold/brown/grey fills) so they sit next to tileset art without standing out.
 
-# Demo / tile emojis — built from the tileset
-
-`npm run build:emojis` writes these straight out of `tileset/` (32 → 128 px,
-nearest neighbour so the pixels stay sharp). Re-run it after changing the
-tileset; nothing else needs editing, the names are already in
-`config/emojiIds.js`.
-
-| # | File | Emoji name | Used for | Built from |
-| --- | --- | --- | --- | --- |
-| 29 | `demo_grass_1.png` | `demo_grass_1` | demo field, base tile | `dngn/floor/grass/grass0.png` |
-| 30 | `demo_grass_2.png` | `demo_grass_2` | demo field speckle (1 in 6) | `dngn/floor/grass/grass-dark0.png` |
-| 31 | `demo_player.png` | `demo_player` | the walking sprite | `player/base/human_m.png` |
-| 32 | `tile_rock.png` | `tile_rock` | boulder on the plain | `item/misc/misc_stone.png` |
-| 33 | `tile_chest.png` | `tile_chest` | treasure chest | `item/misc/misc_box_of_beasts.png` |
-| 34 | `bar_hp.png` | `bar_hp` | one HP point | drawn, tileset palette |
-| 35 | `bar_hp_empty.png` | `bar_hp_empty` | one spent HP point | drawn, tileset palette |
-| 36 | `bar_mana.png` | `bar_mana` | one Mana point | drawn, tileset palette |
-| 37 | `bar_mana_empty.png` | `bar_mana_empty` | one spent Mana point | drawn, tileset palette |
-
-The DCSS set has no health/mana bar of its own, so those four are drawn as a
-dark frame with a lit top edge and a shaded bottom, in the gif's red
-(`#b3382f`) and blue (`#2f6fd0`) — one emoji per point, ten of them for
-`HP: 10/10`.
+Until an ID is pasted into `config/emojiIds.js` every one of them falls back to
+a unicode glyph, so the screens work either way.
 
 ## How the talent tiles were made
 
@@ -153,6 +132,20 @@ State colours (matched to the reference screen): off `#17191d` with a light
 grey edge, available `#4a1414` with a red ✕, on `#2f7d3b`, max `#3f9d4a` with a
 gold frame and pip, focus `#7a2418` with a gold frame. Links are light grey
 (`#c9ced6`), not red, so the tree reads like the game's.
+
+## Troubleshooting `/emojis`
+
+| What you see | What it means | Fix |
+| --- | --- | --- |
+| `/emojis` is not in the command list | The slash commands have not propagated yet, or you are not an administrator | Set `GUILD_ID` in `.env` to your test server and restart: guild commands appear instantly (global ones can take an hour). The command is administrator-only by design. |
+| `❌ /emojis failed: ...` | The command threw; the message carries Discord's reason | Run it again — uploads that already went through are skipped. |
+| `⚠️ Failed N: name (Missing Access [50001])` | The application-emoji API refused the upload for this app | The command automatically retries as a **guild** emoji; give the bot **Manage Expressions** in that server so the retry can work. Guild emojis work in the screens, but only in that server. |
+| `(no PNG in docs/emojis)` | The emoji is configured but has no art | `npm run build:emojis` rebuilds the tileset-derived ones; the rest are listed earlier in this file. |
+| Reply lists `N application, 0 guild` | All good — uploads went to the application, so every server can use them | Paste the printed block into `config/emojiIds.js`. |
+
+The command prints the whole state every run: how many of the 49 names exist, how
+many are pasted into the config, how many PNGs are on disk, and a ready-to-paste
+block (attached as a file when it is too long for one message).
 
 ## After uploading
 

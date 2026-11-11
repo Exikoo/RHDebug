@@ -232,6 +232,38 @@ function formatTable(tableData) {
   return table(tableData, TABLE_CONFIG);
 }
 
+/** Pushes a command list at one target, with a timeout that cannot hang boot. */
+async function setCommands(target, commandsArray, label) {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `${label} registration timeout after ${CONFIG.REGISTRATION_TIMEOUT}ms`,
+          ),
+        ),
+      CONFIG.REGISTRATION_TIMEOUT,
+    );
+  });
+
+  try {
+    return await Promise.race([target.set(commandsArray), timeoutPromise]);
+  } finally {
+    // Prevents a dangling timer from lingering for the rest of the timeout
+    // duration once the race has already been decided.
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Registers the slash commands.
+ *
+ * Global commands can take up to an hour to show up after a restart, which
+ * looks exactly like "the command does not work". Set `GUILD_ID` to the
+ * server you are testing in and the commands are also pushed to that guild,
+ * where the update is instant.
+ */
 async function registerCommands(client, commandsArray) {
   if (!client.application) {
     throw new Error(
@@ -250,29 +282,30 @@ async function registerCommands(client, commandsArray) {
     );
   }
 
-  let timeoutId;
-  const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(
-      () =>
-        reject(
-          new Error(
-            `Registration timeout after ${CONFIG.REGISTRATION_TIMEOUT}ms`,
-          ),
-        ),
-      CONFIG.REGISTRATION_TIMEOUT,
-    );
-  });
-
-  try {
-    return await Promise.race([
-      client.application.commands.set(commandsArray),
-      timeoutPromise,
-    ]);
-  } finally {
-    // Prevents a dangling timer from lingering for the rest of the timeout
-    // duration once the race has already been decided.
-    clearTimeout(timeoutId);
+  const guildId = process.env.GUILD_ID?.trim();
+  if (guildId) {
+    const guild = client.guilds.cache.get(guildId);
+    if (guild) {
+      await setCommands(guild.commands, commandsArray, `guild ${guildId}`);
+      console.log(
+        `${COLORS.green}» ${commandsArray.length} commands registered in guild ${guildId} (instant)${COLORS.reset}`,
+      );
+    } else {
+      console.warn(
+        `${COLORS.yellow}GUILD_ID ${guildId} is set but the bot is not in that guild — skipping the instant registration${COLORS.reset}`,
+      );
+    }
   }
+
+  const result = await setCommands(
+    client.application.commands,
+    commandsArray,
+    "global",
+  );
+  console.log(
+    `${COLORS.green}» ${commandsArray.length} commands registered globally (Discord may take up to an hour to show them)${COLORS.reset}`,
+  );
+  return result;
 }
 
 function logSummary(successCount, errorCount, loadTime) {
@@ -363,14 +396,15 @@ async function loadCommands(client) {
 
     console.log(formatTable(tableData));
 
-    // Register commands
+    // Register commands. A failed registration must not take the bot down:
+    // the commands are loaded and the old registration keeps working.
     try {
       await registerCommands(client, commandsArray);
     } catch (registrationError) {
       logPartialFailure(successCount, errorCount, registrationError);
-      const loadTime = performance.now() - startTime;
-      logSummary(successCount, errorCount, loadTime);
-      throw registrationError;
+      console.warn(
+        `${COLORS.yellow}» Commands are loaded but not registered — the previous slash commands stay in place. Set GUILD_ID in .env for instant updates.${COLORS.reset}`,
+      );
     }
 
     const loadTime = performance.now() - startTime;
