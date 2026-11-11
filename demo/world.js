@@ -6,6 +6,8 @@
  * Everything here is plain in-memory data. No database, no profiles, no
  * map documents: one small object per player, thrown away on restart.
  */
+import { emojiId } from "../config/emojiIds.js";
+
 
 /** Visible field, in tiles. Sixteen emojis fit an embed line comfortably. */
 export const VIEW = { width: 16, height: 7 };
@@ -42,18 +44,63 @@ export const DIRECTIONS = {
   "3": { dx: 1, dy: 0 },
 };
 
-/** Tiles are grass; only the sprite moves. */
-export const GRASS = "<:grass:1411386955026923550>";
-export const SPRITE = "<:player:1414284867813773372>";
-
-/** Unicode stand-ins used when the emojis are not in the guild. */
-export const FALLBACK = { grass: "🟩", sprite: "🧍" };
-
-/** Bar glyphs: one square per point, like the segmented bars of the gif. */
-export const BARS = {
-  hp: { filled: "🟥", empty: "⬛" },
-  mana: { filled: "🟦", empty: "⬛" },
+/** Unicode stand-ins used until the emojis are uploaded (or missing in a guild). */
+export const FALLBACK = {
+  grass: "🟩",
+  sprite: "🧍",
+  hpFull: "🟥",
+  hpEmpty: "⬛",
+  manaFull: "🟦",
+  manaEmpty: "⬛",
 };
+
+/**
+ * `<:name:id>` when the emoji is configured *and* the client can see it,
+ * the unicode stand-in otherwise. A client with no cache (tests, startup)
+ * trusts the configuration.
+ *
+ * @param {string} name
+ * @param {string} fallback
+ * @param {import("discord.js").Client|null} [client]
+ */
+export function glyph(name, fallback, client = null) {
+  const id = emojiId(name);
+  if (!id) return fallback;
+
+  const cache = client?.emojis?.cache;
+  if (cache && typeof cache.has === "function" && !cache.has(id)) return fallback;
+
+  return `<:${name}:${id}>`;
+}
+
+/**
+ * The field's tiles, all built from the tileset art in `tileset/` (see
+ * scripts/build-demo-emojis.mjs): two grass variants for the speckle and
+ * the walking sprite.
+ *
+ * @param {import("discord.js").Client|null} [client]
+ */
+export function fieldGlyphs(client = null) {
+  return {
+    grass: glyph("demo_grass_1", FALLBACK.grass, client),
+    grassDark: glyph("demo_grass_2", FALLBACK.grass, client),
+    sprite: glyph("demo_player", FALLBACK.sprite, client),
+  };
+}
+
+/**
+ * Which grass tile a square uses. A 2D hash rather than `x + y`: it scatters
+ * the dark tiles instead of drawing diagonal stripes, and it is
+ * deterministic, so the same field looks the same on every render.
+ * Roughly one dark tile in six.
+ *
+ * @param {number} x
+ * @param {number} y
+ */
+export function grassAt(x, y) {
+  const noise = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+  return noise - Math.floor(noise) < 0.18 ? "grassDark" : "grass";
+}
 
 /** A brand new game for one user. */
 export function createGame({ userId, name }) {
@@ -145,12 +192,10 @@ export function camera(game) {
 /**
  * The visible field, one string per row.
  * @param {object} game
- * @param {{grass?: string, sprite?: string}} [glyphs]
+ * @param {{grass?: string, grassDark?: string, sprite?: string}} [glyphs]
  * @returns {string[]}
  */
-export function fieldRows(game, glyphs = {}) {
-  const grass = glyphs.grass ?? GRASS;
-  const sprite = glyphs.sprite ?? SPRITE;
+export function fieldRows(game, glyphs = fieldGlyphs()) {
   const view = camera(game);
 
   const rows = [];
@@ -159,7 +204,10 @@ export function fieldRows(game, glyphs = {}) {
     for (let column = 0; column < VIEW.width; column += 1) {
       const x = view.x + column;
       const y = view.y + row;
-      line += x === game.x && y === game.y ? sprite : grass;
+      line +=
+        x === game.x && y === game.y
+          ? glyphs.sprite ?? FALLBACK.sprite
+          : glyphs[grassAt(x, y)] ?? FALLBACK.grass;
     }
     rows.push(line);
   }

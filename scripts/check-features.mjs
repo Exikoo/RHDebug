@@ -19,6 +19,9 @@ const chest = await import("../utils/chest.js");
 const mapGenerator = await import("../utils/mapGenerator.js");
 const mapGeneration = await import("../config/mapGeneration.js");
 const plainsData = await import("../data/plains1.js");
+const emojiIds = await import("../config/emojiIds.js");
+const { EMOJI_MAP } = await import("../config/mapConfig.js");
+const fs = await import("node:fs");
 const inventory = await import("../utils/inventory.js");
 const itemCache = await import("../utils/itemCache.js");
 const { calculateCombinedStats } = await import("../utils/playerUtils.js");
@@ -125,6 +128,23 @@ test("a chest pays out once and turns into ground", async () => {
   const second = await chest.openChest(p, map, 1, 0, { rng: () => 0 });
   assert.equal(second.gold > 0, true);
   assert.equal(map.mapData[0][1], "G", "an empty tile should stay empty");
+});
+
+test("the rock and chest emojis are built from the tileset", () => {
+  const demoDir = new URL("../docs/emojis/", import.meta.url);
+  for (const name of ["tile_rock", "tile_chest"]) {
+    const file = new URL(`${name}.png`, demoDir);
+    assert.ok(fs.existsSync(file), `missing ${file.pathname} — run npm run build:emojis`);
+
+    const header = fs.readFileSync(file).subarray(0, 24);
+    assert.equal(header.readUInt32BE(16), 128);
+    assert.equal(header.readUInt32BE(20), 128);
+    assert.ok(emojiIds.allEmojiNames().includes(name), `${name} is not registered`);
+  }
+
+  // Until the IDs are pasted in, the tiles fall back to unicode.
+  assert.equal(typeof EMOJI_MAP.ROCK, "string");
+  assert.equal(typeof EMOJI_MAP.CHEST, "string");
 });
 
 console.log("\nquests");

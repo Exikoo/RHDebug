@@ -42,20 +42,26 @@ function availableFiles() {
  * @returns {string}
  */
 function configSnippet(idByName) {
-  const serialize = (exportName, group) =>
-    [
-      `export const ${exportName} = {`,
-      ...Object.keys(group).map(
-        (name) => `  ${name}: ${idByName.has(name) ? `"${idByName.get(name)}"` : "null"},`,
-      ),
-      "};",
-    ].join("\n");
+  const exportName = {
+    bag: "SLOT_EMOJI_IDS",
+    ui: "UI_EMOJI_IDS",
+    professions: "PROFESSION_EMOJI_IDS",
+    tiles: "TILE_EMOJI_IDS",
+    demo: "DEMO_EMOJI_IDS",
+  };
 
-  return [
-    serialize("SLOT_EMOJI_IDS", EMOJI_GROUPS.bag),
-    "",
-    serialize("UI_EMOJI_IDS", EMOJI_GROUPS.ui),
-  ].join("\n");
+  return Object.entries(EMOJI_GROUPS)
+    .map(([group, ids]) => {
+      const name = exportName[group] ?? `${group.toUpperCase()}_EMOJI_IDS`;
+      return [
+        `export const ${name} = {`,
+        ...Object.keys(ids).map(
+          (key) => `  ${key}: ${idByName.has(key) ? `"${idByName.get(key)}"` : "null"},`,
+        ),
+        "};",
+      ].join("\n");
+    })
+    .join("\n\n");
 }
 
 export default {

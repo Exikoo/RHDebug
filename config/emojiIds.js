@@ -62,10 +62,29 @@ export const PROFESSION_EMOJI_IDS = {
   prof_cooking: null,
 };
 
+/** Map tiles that are not part of the original 28. */
+export const TILE_EMOJI_IDS = {
+  tile_rock: null,
+  tile_chest: null,
+};
+
+/** The standalone demo screen: field tiles, sprite and bar segments. */
+export const DEMO_EMOJI_IDS = {
+  demo_grass_1: null,
+  demo_grass_2: null,
+  demo_player: null,
+  bar_hp: null,
+  bar_hp_empty: null,
+  bar_mana: null,
+  bar_mana_empty: null,
+};
+
 export const EMOJI_GROUPS = {
   bag: SLOT_EMOJI_IDS,
   ui: UI_EMOJI_IDS,
   professions: PROFESSION_EMOJI_IDS,
+  tiles: TILE_EMOJI_IDS,
+  demo: DEMO_EMOJI_IDS,
 };
 
 /** A Discord snowflake: 17-20 digits, but be lenient about the exact length. */
@@ -77,6 +96,18 @@ const VALID_ID = /^\d{15,25}$/;
  */
 function isValidId(id) {
   return Boolean(id) && VALID_ID.test(String(id).trim());
+}
+
+/**
+ * The configured ID for a name, or null.
+ * @param {string} name
+ * @returns {string|null}
+ */
+export function emojiId(name) {
+  for (const group of Object.values(EMOJI_GROUPS)) {
+    if (Object.hasOwn(group, name) && isValidId(group[name])) return String(group[name]);
+  }
+  return null;
 }
 
 /**
