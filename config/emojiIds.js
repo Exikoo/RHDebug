@@ -37,7 +37,6 @@ export const UI_EMOJI_IDS = {
   talent_link_v: "1568284086035030106",
   talent_blank: "1568284087188463807",
   tab_talents: "1568284088417128508",
-<<<<<<< HEAD
   tab_character: "1570062164654555207",
   ui_use: "1570062166885793892",
   ui_check: "1570062168798400542",
@@ -46,20 +45,6 @@ export const UI_EMOJI_IDS = {
   gear_icon_armor: "1570062172455960607",
   gear_icon_weapon: "1570062173667856454",
   gear_icon_accessory: "1570062174829805660",
-=======
-  tab_character: null,
-  ui_use: null,
-  ui_check: null,
-  ui_cross: null,
-  // character sheet decorations
-  attr_bracket: null,
-  gear_icon_armor: null,
-  gear_icon_weapon: null,
-  gear_icon_accessory: null,
-  // map row: gold counter
-  ui_gold: null,
-  // map row: professions, quests, market, achievements, rankings
->>>>>>> b38e698d8f26e7be09317922414c71f2db8334b6
   ui_quests: null,
   ui_market: null,
   ui_trophy: null,
