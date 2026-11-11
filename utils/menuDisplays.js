@@ -317,7 +317,7 @@ export function generateCharacterDisplay({
     `_${player.experience ?? 0} / ${xpToNextLevel(player.level)}_${EM}${EM}_${health} / ${maxHealth}_${EM}_${mana} / ${maxMana}_`,
     "",
     "**Bag slots max**",
-    `${player.bagSlots ?? 8}`,
+    `${player.bagSlots ?? 9}`,
   ].join("\n");
 
   return new EmbedBuilder()

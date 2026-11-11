@@ -1,5 +1,7 @@
 import { EmbedBuilder } from "discord.js";
 
+import { customEmoji } from "../config/emojiIds.js";
+
 import { MONSTER_TEMPLATES } from "../monsterManager.js";
 import { renderMapView } from "./mapRenderer.js";
 import { xpToNextLevel } from "./progression.js";
@@ -81,22 +83,24 @@ export function buildMapEmbed({
   });
   embed.setDescription(`${areaBand(area)}\n${view.rows.join("\n")}`);
 
+  // Three inline fields per line, values in italics — the reference prints
+  // `Lv. 1 / HP / MP` across one line and `Bag slots / gold` on the next.
   embed.addFields(
     {
       name: `Lv. ${player.level}`,
-      value: `${player.experience ?? 0}/${nextXp} XP`,
+      value: `*${player.experience ?? 0} / ${nextXp}*`,
       inline: true,
     },
-    { name: "HP", value: `${currentHealth}/${maxHealth}`, inline: true },
-    { name: "MP", value: `${currentMana}/${maxMana}`, inline: true },
+    { name: "HP", value: `*${currentHealth} / ${maxHealth}*`, inline: true },
+    { name: "MP", value: `*${currentMana} / ${maxMana}*`, inline: true },
     {
       name: "Bag slots",
-      value: `${inventoryUsed}/${player.bagSlots ?? 8}`,
+      value: `*${inventoryUsed}/${player.bagSlots ?? 9}*`,
       inline: true,
     },
     {
       name: "Gold",
-      value: `${formatNumber(player.gold)} 🪙`,
+      value: `*${formatNumber(player.gold)}* ${customEmoji("ui_gold", "🪙")}`,
       inline: true,
     },
   );

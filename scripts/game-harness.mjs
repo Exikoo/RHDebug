@@ -76,7 +76,7 @@ export function makePlayer(over = {}) {
     level: 3,
     experience: 20,
     gold: 120,
-    bagSlots: 8,
+    bagSlots: 9,
     currentMapId: "main_city",
     location: { x: 1, y: 1 },
     currentHealth: 90,

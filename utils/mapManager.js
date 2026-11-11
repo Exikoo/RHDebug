@@ -101,6 +101,8 @@ class MapManager {
     const mapData = decorateMap(def.base, def.rules, { seed, protect });
 
     if (existing) {
+      // Keep the generated layout and its display name in sync with config.
+      existing.name = def.name;
       existing.mapData = mapData;
       existing.markModified("mapData");
       existing.width = width;

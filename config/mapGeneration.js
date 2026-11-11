@@ -14,8 +14,14 @@ import { plains1Map } from "../data/plains1.js";
  */
 export const GENERATED_MAPS = {
   plains1: {
-    name: "Plains",
+    name: "The Plain of LoD",
     base: plains1Map,
-    rules: [{ replace: "G", with: "T", oneIn: 12 }],
+    // Trees and boulders break the field up; chests are the reward for
+    // walking the long way round, exactly like the reference screen.
+    rules: [
+      { replace: "G", with: "T", oneIn: 12 },
+      { replace: "G", with: "ROCK", oneIn: 22 },
+      { replace: "G", with: "CHEST", oneIn: 34 },
+    ],
   },
 };

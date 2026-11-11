@@ -83,63 +83,67 @@ export async function createNavigationButtons(
   const blockedLeft = !isEnterable(mapData, x - 1, y);
   const blockedRight = !isEnterable(mapData, x + 1, y);
 
-  const row1 = new ActionRowBuilder();
-
-  // Row 1 is the town row: shop (when you are standing on one) and the four
-  // feature screens.
-  if (isNearShop(player, currentMap)) {
-    row1.addComponents(
-      createActionButtonEmoji(
-        "map_action_shop",
-        ButtonStyle.Success,
-        "<:enter_shop:1414281517592477836>",
-      ),
-    );
-  } else {
-    row1.addComponents(createPlaceholderButton("map_placeholder_1"));
-  }
-
-  row1.addComponents(
-    createActionButtonEmoji("map_show_professions", ButtonStyle.Secondary, ICON_PROFESSIONS()),
-    createActionButtonEmoji("map_show_quests", ButtonStyle.Secondary, ICON_QUESTS()),
-    createActionButtonEmoji("map_show_market", ButtonStyle.Secondary, ICON_MARKET()),
-    createActionButtonEmoji("map_show_achievements", ButtonStyle.Secondary, ICON_ACHIEVEMENTS()),
+  // The reference screen is a fixed 3 x 5 console pad:
+  //
+  //   [ Start ] [ ✕ ] [ ✱ ] [ 🛡 ] [ Select ]
+  //   [ ℹ️ ]    [ 🌐 ] [ 🧤 ] [ ↪️ ] [ 🎒 ]
+  //   [ ⬅️ ]    [ ⬆️ ] [ ⬇️ ] [ ➡️ ] [ Quit ]
+  //
+  // Start / Select are green, the held tool (the hand) and the d-pad are
+  // blue, Quit is red and everything else is grey.
+  const row1 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("map_show_actions")
+      .setLabel("Start")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId("map_cancel")
+      .setEmoji("✕")
+      .setStyle(ButtonStyle.Secondary),
+    createActionButtonEmoji("map_show_quests", ButtonStyle.Secondary, "✱"),
+    createActionButtonEmoji("map_show_character", ButtonStyle.Secondary, "🛡️"),
+    new ButtonBuilder()
+      .setCustomId("map_show_talents")
+      .setLabel("Select")
+      .setStyle(ButtonStyle.Success),
   );
 
   const row2 = new ActionRowBuilder().addComponents(
-    createActionButtonEmoji(
-      "map_show_character",
-      ButtonStyle.Secondary,
-      "<:bookstats:1415349972043563125>",
-    ),
-    createActionButtonEmoji(
-      "map_show_talents",
-      ButtonStyle.Secondary,
-      customEmoji("tab_talents", "⭐"),
-    ),
-    createDirectionButton("map_move_up", "⬆️", hasMonsterUp, blockedUp),
-    createActionButtonEmoji("map_show_rankings", ButtonStyle.Secondary, ICON_RANKS()),
-    // Stairs / tile actions. The shop gets its own button in row 1.
-    createActionButtonEmoji("map_show_actions", ButtonStyle.Secondary, "🪜"),
-  );
-
-  const row3 = new ActionRowBuilder().addComponents(
+    createActionButtonEmoji("map_show_achievements", ButtonStyle.Secondary, "ℹ️"),
+    createActionButtonEmoji("map_show_rankings", ButtonStyle.Secondary, "🌐"),
+    // The hand is the "current tool" tile: highlighted blue in the reference.
+    createActionButtonEmoji("map_show_professions", ButtonStyle.Primary, "🧤"),
+    createActionButtonEmoji("map_show_market", ButtonStyle.Secondary, "↪️"),
     createActionButtonEmoji(
       "map_show_inventory",
       ButtonStyle.Secondary,
       BAG_EMOJI,
     ),
+  );
+
+  const row3 = new ActionRowBuilder().addComponents(
     createDirectionButton("map_move_left", "⬅️", hasMonsterLeft, blockedLeft),
+    createDirectionButton("map_move_up", "⬆️", hasMonsterUp, blockedUp),
     createDirectionButton("map_move_down", "⬇️", hasMonsterDown, blockedDown),
     createDirectionButton("map_move_right", "➡️", hasMonsterRight, blockedRight),
     createQuitButton(),
   );
 
-  const row4 = new ActionRowBuilder().addComponents(
-    createRequestedByButton(interaction.user.username),
-  );
+  // Standing on/next to a shop adds its door as a green Start-style button,
+  // the way walking into the tile does in the original game.
+  const shopRow = isNearShop(player, currentMap)
+    ? [
+        new ActionRowBuilder().addComponents(
+          createActionButtonEmoji(
+            "map_action_shop",
+            ButtonStyle.Success,
+            "<:enter_shop:1414281517592477836>",
+          ),
+        ),
+      ]
+    : [];
 
-  return [row1, row2, row3, row4];
+  return [row1, row2, row3, ...shopRow];
 }
 
 /**
@@ -295,7 +299,7 @@ export function createRequestedByButton(username) {
  */
 export function createBagButtons(playerProfile, selectedIndex = null) {
   const slots = playerProfile.inventory || [];
-  const bagSlots = Math.min(playerProfile.bagSlots || slots.length, 8);
+  const bagSlots = Math.min(playerProfile.bagSlots || slots.length, 9);
 
   const selectedSlot = selectedIndex !== null ? slots[selectedIndex] : null;
   const selectedItem = selectedSlot?.item ?? null;

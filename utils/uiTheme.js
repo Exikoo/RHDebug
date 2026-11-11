@@ -55,14 +55,18 @@ export function areaBand(name) {
 }
 
 /**
- * The map name plus the run depth, e.g. `The City of RuneHero`.
+ * The map name plus its level, exactly as the reference screen prints it
+ * (`The Plain of LoD - Level 1`). Every map has a level: the open world is
+ * level 1, dungeons carry their depth.
+ *
  * @param {object} map
  * @param {number} [depth]
  * @returns {string}
  */
 export function areaLabel(map, depth) {
   const name = map?.name ?? "Unknown Area";
-  return depth ? `${name} — Depth ${depth}` : name;
+  const level = Number(depth) > 0 ? Number(depth) : 1;
+  return `${name} - Level ${level}`;
 }
 
 /**
