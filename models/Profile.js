@@ -29,7 +29,7 @@ const profileSchema = new mongoose.Schema(
       enum: ["Normal", "Permadeath"],
       default: "Normal",
     },
-    bagSlots: { type: Number, default: 8 },
+    bagSlots: { type: Number, default: 9 },
     level: { type: Number, default: 1, min: 1, index: true },
     experience: { type: Number, default: 0, min: 0 },
     currentHealth: {

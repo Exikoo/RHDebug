@@ -62,6 +62,10 @@ export function checkConfiguredEmojis(client) {
   ];
 
   for (const [key, value] of entries) {
+    // Plain unicode (e.g. the chest and boulder tiles until their art is
+    // uploaded) is a deliberate fallback, not a broken emoji.
+    if (!String(value).includes("<")) continue;
+
     total += 1;
     const parsed = parseCustomEmoji(value);
 

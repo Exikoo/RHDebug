@@ -4,6 +4,8 @@ export const EMOJI_MAP = {
   P: "<:player:1414284867813773372>", // player on grass
   G: "<:grass:1411386955026923550>", // grass
   T: "<:tree_on_grass:1414283682579091466>", // tree on grass
+  ROCK: "🪨", // boulder (unicode until art is uploaded)
+  CHEST: "📦", // treasure chest
   S: "<:stairs:1393659058946441297>", // stairs
   WT: "<:shoals_deep_water_1_shape:1414281044554809354>", // water
   WD: "<:enter_shop:1414281517592477836>", // door
@@ -36,6 +38,8 @@ export const PLAYER_EMOJI_BY_CLASS = {
 export const LEGEND = {
   W: { walkable: false },
   T: { walkable: false },
+  ROCK: { walkable: false },
+  CHEST: { walkable: true, event: "chest" },
   WT: { walkable: false },
   WD: { walkable: false },
   G: { walkable: true },

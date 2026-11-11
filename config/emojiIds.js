@@ -48,6 +48,8 @@ export const UI_EMOJI_IDS = {
   gear_icon_armor: null,
   gear_icon_weapon: null,
   gear_icon_accessory: null,
+  // map row: gold counter
+  ui_gold: null,
   // map row: professions, quests, market, achievements, rankings
   ui_quests: null,
   ui_market: null,

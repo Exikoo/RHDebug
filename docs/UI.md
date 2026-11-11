@@ -10,19 +10,48 @@ tileset filenames one-to-one — `stone_brick_1`, `tree_on_grass`,
 This is also why the classic LoD screen is **16×7**: an embed description is
 capped at 4096 characters and every `<:name:id>` costs 28–48 of them.
 
-## Screen layout
+## Screen layout (matches the first-demo video)
 
 ```
 Vlad's score: 287              <- embed title
-```The City of RuneHero```       <- centred area band (code block = dark strip)
-🟩🟩🟩🟩🟩🟩🌲🟩 ...            <- the emoji grid, 16 x 7
-Lv. 3      HP        MP        <- compact stat row
-12/40 XP   118/130   0/0
+```The Plain of LoD - Level 1``` <- centred area band (code block = dark strip)
+🟩🟩🟩🟩🪨🟩🌲🟩📦🟩 ...          <- the emoji grid, 16 x 7
+Lv. 3      HP        MP        <- compact stat row, values in italics
+*12 / 40*  *118 / 130*  *0 / 0*
 Bag slots  Gold
-4/8        275 🪙
+*4/9*      *275* 🪙
 > activity line                <- always exactly four lines
 > ...
 ```
+
+The console pad under it is a fixed 3 × 5 grid, exactly like the video:
+
+```
+[ Start ] [ ✕ ] [ ✱  ] [ 🛡 ] [ Select ]
+[ ℹ️ ]    [ 🌐 ] [ 🧤 ] [ ↪️ ] [ 🎒 ]
+[ ⬅️ ]    [ ⬆️ ] [ ⬇️ ] [ ➡️ ] [ Quit ]
+```
+
+`Start` and `Select` are green, the held tool (the hand) and the d-pad are
+blue, `Quit` is red, everything else is grey. What each one opens:
+
+| Button | Screen |
+| --- | --- |
+| `Start` | tile actions (stairs, NPC, shop) |
+| ✕ | cancels the current target and redraws |
+| ✱ | quest board |
+| 🛡 | character sheet |
+| `Select` | talent tree |
+| ℹ️ | achievements |
+| 🌐 | rankings |
+| 🧤 | professions |
+| ↪️ | market |
+| 🎒 | bag |
+| ⬅️ ⬆️ ⬇️ ➡️ | movement (red when a monster is in the way, grey when blocked) |
+| `Quit` | saves and closes the screen |
+
+Standing next to a shop adds its green door button as a fourth row, so the
+pad stays a clean 3 × 5 everywhere else.
 
 | Part | Where it lives |
 | --- | --- |
@@ -36,6 +65,17 @@ Bag slots  Gold
 | XP curve, level ups, vitals clamping | `utils/progression.js` |
 | Startup emoji validation | `utils/emojiCheck.js` |
 | One-command entry point | `Command/Interactions/start.js` |
+
+## The world: The Plain of LoD
+
+`config/mapGeneration.js` decorates the hand-made `data/plains1.js` field:
+trees (1-in-12), boulders (1-in-22) and chests (1-in-34), re-rolled until every
+protected point is still reachable. Chests are walkable — you step on one and
+it pays `12–48` gold plus, 45 % of the time, a material or potion, then the
+tile becomes grass and the map is saved, so a chest can only be opened once.
+
+Run `/regenmap plains1` once after updating an existing database: the layout,
+the boulders/chests and the map's display name are all regenerated together.
 
 ## What changed in the grid itself
 

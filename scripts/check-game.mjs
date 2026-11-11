@@ -46,6 +46,28 @@ await press("map_bag_use");
 await press("map_bag_select");
 await press("map_bag_trash");
 
+section("console pad");
+{
+  const pad = await press("map_back_to_map");
+  const labels = pad.payload.components.map((row) =>
+    row.toJSON().components.map((c) => c.label ?? c.emoji?.name ?? "?"),
+  );
+  assert.equal(labels.length, 3, `expected 3 button rows, got ${labels.length}`);
+  assert.ok(labels.every((row) => row.length === 5), "every row must hold 5 buttons");
+  assert.equal(labels[0][0], "Start");
+  assert.equal(labels[0][4], "Select");
+  assert.equal(labels[2][4], "Quit");
+  assert.ok(
+    pad.embed.description.includes("Level 1"),
+    "the area band must print its level",
+  );
+  assert.ok(
+    pad.embed.fields.some((field) => field.name === "Bag slots" && field.value.includes("/9")),
+    "bag slots must show the 9-slot capacity",
+  );
+  await press("map_cancel");
+}
+
 section("professions");
 await press("map_show_professions");
 await press("map_gather_mining");

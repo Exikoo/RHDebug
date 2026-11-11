@@ -10,6 +10,7 @@ import Profile from "../../models/Profile.js";
 
 import { getMap } from "../../utils/mapCache.js";
 import { getCombinedStats, getItemMap, idOf } from "../../utils/itemCache.js";
+import { openChest } from "../../utils/chest.js";
 import { buildMapEmbed } from "../../utils/screen.js";
 import combatManager from "../../utils/combatManager.js";
 import {
@@ -233,6 +234,7 @@ function createContext(interaction, player, map) {
 const EXACT_HANDLERS = new Map([
   ["map_open", showMap],
   ["map_back_to_map", showMap],
+  ["map_cancel", cancelAction],
   ["map_action_shop_leave", showMap],
   ["map_quit", quitGame],
   ["map_show_inventory", openBag],
@@ -328,6 +330,24 @@ async function renderMap(ctx, map, deadKeys) {
   });
 }
 
+/**
+ * The grey ✕ of the console pad: drop the current target and redraw the
+ * screen. Harmless when nothing is targeted.
+ * @param {Ctx} ctx
+ */
+async function cancelAction(ctx) {
+  const { player } = ctx;
+  clearBagSelection(ctx.userId);
+
+  if (player.currentTarget) {
+    clearTarget(player);
+    addCombatMessage(player.userId, "✕ You disengage.");
+    await player.save();
+  }
+
+  return renderMap(ctx, ctx.map);
+}
+
 /** @param {Ctx} ctx */
 async function showMap(ctx) {
   clearBagSelection(ctx.userId);
@@ -378,7 +398,20 @@ async function handleMove(ctx) {
     await player.save();
   } else if (canStep) {
     applyStep(player, next);
+    const chest = tile === "CHEST";
     await Promise.all([player.save(), deadKeys]);
+
+    if (chest) {
+      const loot = await openChest(player, map, next.x, next.y);
+      await player.save();
+      addCombatMessage(
+        player.userId,
+        `📦 Chest opened: +${loot.gold} 🪙${
+          loot.itemName ? ` and ${loot.itemName}` : ""
+        }`,
+      );
+      deadKeys = startDeadLookup(map);
+    }
 
     if (connection) {
       const arrived = await transition(ctx, connection);
@@ -928,7 +961,7 @@ function buildShopReply(player, interaction) {
       { name: "Gold", value: `${player.gold}`, inline: true },
       {
         name: "Bag slots",
-        value: `${inventoryUsed}/${player.bagSlots}`,
+        value: `${inventoryUsed}/${player.bagSlots ?? 9}`,
         inline: true,
       },
     )

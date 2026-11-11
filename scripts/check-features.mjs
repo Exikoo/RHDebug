@@ -15,6 +15,10 @@ const professions = await import("../utils/professions.js");
 const quests = await import("../utils/quests.js");
 const achievements = await import("../utils/achievements.js");
 const market = await import("../utils/market.js");
+const chest = await import("../utils/chest.js");
+const mapGenerator = await import("../utils/mapGenerator.js");
+const mapGeneration = await import("../config/mapGeneration.js");
+const plainsData = await import("../data/plains1.js");
 const inventory = await import("../utils/inventory.js");
 const itemCache = await import("../utils/itemCache.js");
 const { calculateCombinedStats } = await import("../utils/playerUtils.js");
@@ -88,6 +92,39 @@ test("crafting respects the profession level", () => {
   const result = professions.craft(p, "cooking", "herb_tonic");
   assert.equal(result.ok, false);
   assert.match(result.message, /level 2 required/i);
+});
+
+console.log("\nworld");
+test("the plain is decorated with trees, boulders and chests", () => {
+  const { decorateMap } = mapGenerator;
+  const { GENERATED_MAPS } = mapGeneration;
+  const { plains1Map } = plainsData;
+
+  const tiles = new Set();
+  for (let seed = 1; seed <= 5; seed += 1) {
+    const generated = decorateMap(plains1Map, GENERATED_MAPS.plains1.rules, { seed });
+    for (const row of generated) for (const tile of row) tiles.add(tile);
+  }
+
+  assert.ok(tiles.has("T"), "no trees were placed");
+  assert.ok(tiles.has("ROCK"), "no boulders were placed");
+  assert.ok(tiles.has("CHEST"), "no chests were placed");
+  assert.ok(GENERATED_MAPS.plains1.name.includes("Plain of LoD"));
+});
+
+test("a chest pays out once and turns into ground", async () => {
+  const p = { userId: "c1", inventory: [], professions: {}, gold: 0 };
+  const map = { mapData: [["G", "CHEST"]], saved: 0, async save() { this.saved += 1; } };
+
+  const first = await chest.openChest(p, map, 1, 0, { rng: () => 0 });
+  assert.ok(first.gold > 0, "no gold");
+  assert.equal(map.mapData[0][1], "G", "the chest tile was left behind");
+  assert.equal(map.saved, 1, "the map was not saved");
+  assert.equal(p.gold, first.gold);
+
+  const second = await chest.openChest(p, map, 1, 0, { rng: () => 0 });
+  assert.equal(second.gold > 0, true);
+  assert.equal(map.mapData[0][1], "G", "an empty tile should stay empty");
 });
 
 console.log("\nquests");
