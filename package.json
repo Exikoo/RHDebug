@@ -8,10 +8,11 @@
     "start": "node index.js",
     "demo": "node demo/index.js",
     "build:emojis": "node scripts/build-emojis.mjs",
-    "test": "node scripts/check-buttons.mjs && node scripts/check-game.mjs && node scripts/check-features.mjs && node scripts/check-demo.mjs",
+    "test": "node scripts/check-buttons.mjs && node scripts/check-game.mjs && node scripts/check-features.mjs && node scripts/check-demo.mjs && node scripts/check-emojis-command.mjs",
     "test:ui": "node scripts/check-buttons.mjs && node scripts/check-game.mjs",
     "test:rules": "node scripts/check-features.mjs",
-    "test:demo": "node scripts/check-demo.mjs"
+    "test:demo": "node scripts/check-demo.mjs",
+    "test:emojis": "node scripts/check-emojis-command.mjs"
   },
   "dependencies": {
     "discord.js": "^14.27.0",

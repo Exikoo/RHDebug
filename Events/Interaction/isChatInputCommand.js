@@ -20,6 +20,21 @@ export default {
         ephemeral: true,
       });
 
-    command.execute(interaction, client);
+    try {
+      await command.execute(interaction, client);
+    } catch (error) {
+      // A throwing command used to leave the interaction with no reply at
+      // all, which Discord reports as "the application did not respond".
+      console.error(`/${interaction.commandName} failed:`, error);
+      const payload = {
+        content: `❌ \`/${interaction.commandName}\` failed: ${error?.message ?? error}`,
+        ephemeral: true,
+      };
+
+      if (interaction.deferred || interaction.replied) {
+        return interaction.followUp(payload).catch(() => {});
+      }
+      return interaction.reply(payload).catch(() => {});
+    }
   },
 };

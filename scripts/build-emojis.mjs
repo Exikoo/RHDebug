@@ -32,6 +32,17 @@ const COPIES = [
   // map tiles that were still unicode
   ["item/misc/misc_stone.png", "tile_rock", "boulder on the plain"],
   ["item/misc/misc_box_of_beasts.png", "tile_chest", "treasure chest (closest chest art in the set)"],
+  // professions
+  ["item/misc/misc_tremorstones.png", "prof_mining", "ore cluster"],
+  ["item/weapon/battle_axe1.png", "prof_woodcutting", "axe"],
+  ["item/rod/rod00.png", "prof_fishing", "fishing rod"],
+  ["dngn/decor/flower_patch_0.png", "prof_herbalism", "flower patch"],
+  ["item/book/cloth.png", "prof_crafting", "cloth"],
+  ["item/food/bread_ration.png", "prof_cooking", "bread"],
+  // map row icons
+  ["item/gold/01.png", "ui_gold", "coin"],
+  ["item/parchment/base_parchment_low_level.png", "ui_quests", "scroll"],
+  ["dngn/shops/shop_general.png", "ui_market", "shop sign"],
 ];
 
 /**
@@ -47,6 +58,51 @@ function barSvg(fill, highlight, shadow) {
     <rect x="2" y="2" width="28" height="28" fill="none" stroke="#0b0c0e" stroke-width="2"/>
   </svg>`;
 }
+
+/** Icons the tileset has no art for, drawn in its palette. */
+const ICONS = [
+  [
+    "prof_smithing",
+    `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">
+      <g stroke="#121316" stroke-width="1">
+        <rect x="4" y="24" width="18" height="4" fill="#7a4a1e" transform="rotate(-38 4 24)"/>
+        <rect x="3" y="25" width="16" height="2" fill="#a2662a" transform="rotate(-38 4 24)"/>
+        <rect x="16" y="4" width="13" height="9" fill="#9aa0a6"/>
+        <rect x="16" y="4" width="13" height="3" fill="#dfe4ea"/>
+        <rect x="16" y="10" width="13" height="3" fill="#6b7178"/>
+      </g>
+    </svg>`,
+    "smith's hammer",
+  ],
+  [
+    "ui_trophy",
+    `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">
+      <g stroke="#121316" stroke-width="1">
+        <rect x="6" y="6" width="20" height="4" fill="#e0b23a"/>
+        <path d="M7 10 h18 v6 a9 9 0 0 1 -18 0 z" fill="#c99a25"/>
+        <path d="M8 10 h6 v9 a6 6 0 0 1 -6 -6 z" fill="#f5d97a"/>
+        <rect x="4" y="9" width="3" height="7" fill="#a8791f"/>
+        <rect x="25" y="9" width="3" height="7" fill="#a8791f"/>
+        <rect x="14" y="21" width="4" height="5" fill="#a8791f"/>
+        <rect x="10" y="26" width="12" height="3" fill="#e0b23a"/>
+      </g>
+    </svg>`,
+    "gold trophy",
+  ],
+  [
+    "ui_ranks",
+    `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">
+      <g stroke="#121316" stroke-width="1">
+        <rect x="5" y="17" width="7" height="11" fill="#c8ced6"/>
+        <rect x="13" y="9" width="7" height="19" fill="#e0b23a"/>
+        <rect x="21" y="20" width="7" height="8" fill="#c07a3a"/>
+        <rect x="4" y="27" width="25" height="2" fill="#6b7178"/>
+        <rect x="13" y="9" width="7" height="3" fill="#f5d97a"/>
+      </g>
+    </svg>`,
+    "podium",
+  ],
+];
 
 /** Full and empty segments, in the gif's red and blue. */
 const BARS = [
@@ -91,6 +147,11 @@ async function main() {
   }
 
   for (const [name, svg, note] of BARS) {
+    const file = await drawBar(name, svg);
+    written.push([path.basename(file), name, note]);
+  }
+
+  for (const [name, svg, note] of ICONS) {
     const file = await drawBar(name, svg);
     written.push([path.basename(file), name, note]);
   }
