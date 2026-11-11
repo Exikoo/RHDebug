@@ -15,10 +15,31 @@ let items = new Map();
 let loading = null;
 let loadedAt = 0;
 
+let byKey = new Map();
+
 async function loadItems() {
   const docs = await Item.find({}).lean();
   items = new Map(docs.map((doc) => [String(doc._id), doc]));
+  byKey = new Map(docs.map((doc) => [doc.itemId, doc]));
   loadedAt = Date.now();
+}
+
+/**
+ * Looks an item up by its ObjectId string from the cache.
+ * @param {string} id
+ * @returns {object|null}
+ */
+export function getItemById(id) {
+  return id ? (items.get(String(id)) ?? null) : null;
+}
+
+/**
+ * Looks an item up by its config key (`iron_sword`) instead of its ObjectId.
+ * @param {string} key
+ * @returns {object|null}
+ */
+export function getItemByKey(key) {
+  return byKey.get(key) ?? null;
 }
 
 /**

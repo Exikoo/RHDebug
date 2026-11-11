@@ -85,6 +85,8 @@ export async function createNavigationButtons(
 
   const row1 = new ActionRowBuilder();
 
+  // Row 1 is the town row: shop (when you are standing on one) and the four
+  // feature screens.
   if (isNearShop(player, currentMap)) {
     row1.addComponents(
       createActionButtonEmoji(
@@ -92,20 +94,17 @@ export async function createNavigationButtons(
         ButtonStyle.Success,
         "<:enter_shop:1414281517592477836>",
       ),
-      createPlaceholderButton("map_placeholder_2"),
-      createPlaceholderButton("map_placeholder_3"),
-      createPlaceholderButton("map_placeholder_4"),
-      createPlaceholderButton("map_placeholder_5"),
     );
   } else {
-    row1.addComponents(
-      createPlaceholderButton("map_placeholder_1"),
-      createPlaceholderButton("map_placeholder_2"),
-      createPlaceholderButton("map_placeholder_3"),
-      createPlaceholderButton("map_placeholder_4"),
-      createPlaceholderButton("map_placeholder_5"),
-    );
+    row1.addComponents(createPlaceholderButton("map_placeholder_1"));
   }
+
+  row1.addComponents(
+    createActionButtonEmoji("map_show_professions", ButtonStyle.Secondary, ICON_PROFESSIONS()),
+    createActionButtonEmoji("map_show_quests", ButtonStyle.Secondary, ICON_QUESTS()),
+    createActionButtonEmoji("map_show_market", ButtonStyle.Secondary, ICON_MARKET()),
+    createActionButtonEmoji("map_show_achievements", ButtonStyle.Secondary, ICON_ACHIEVEMENTS()),
+  );
 
   const row2 = new ActionRowBuilder().addComponents(
     createActionButtonEmoji(
@@ -119,7 +118,7 @@ export async function createNavigationButtons(
       customEmoji("tab_talents", "⭐"),
     ),
     createDirectionButton("map_move_up", "⬆️", hasMonsterUp, blockedUp),
-    createPlaceholderButton("map_placeholder_7"),
+    createActionButtonEmoji("map_show_rankings", ButtonStyle.Secondary, ICON_RANKS()),
     // Stairs / tile actions. The shop gets its own button in row 1.
     createActionButtonEmoji("map_show_actions", ButtonStyle.Secondary, "🪜"),
   );
@@ -436,6 +435,11 @@ const EMPTY_CELL = () => customEmoji("slot_empty", "▫️") ?? "▫️";
 
 /** Tab tiles (book / star / bag / II sheet). */
 const TILE_CHARACTER = () => customEmoji("tab_character", "📋") ?? "📋";
+const ICON_PROFESSIONS = () => customEmoji("prof_smithing", "🧰") ?? "🧰";
+const ICON_QUESTS = () => customEmoji("ui_quests", "📜") ?? "📜";
+const ICON_MARKET = () => customEmoji("ui_market", "🏪") ?? "🏪";
+const ICON_ACHIEVEMENTS = () => customEmoji("ui_trophy", "🏆") ?? "🏆";
+const ICON_RANKS = () => customEmoji("ui_ranks", "🏅") ?? "🏅";
 const TILE_TALENTS = () => customEmoji("tab_talents", "⭐") ?? "⭐";
 
 /**
@@ -477,7 +481,7 @@ export function createCharacterButtons(playerProfile, icons = {}) {
     emojiButton("map_show_talents", TILE_TALENTS()),
     createPlaceholderButton("map_char_pad_1"),
     createPlaceholderButton("map_char_pad_2"),
-    emojiButton("map_show_inventory", icons.bag || BAG_EMOJI),
+    emojiButton("map_char_bag", icons.bag || BAG_EMOJI),
   );
 
   const row3 = new ActionRowBuilder().addComponents(
@@ -510,8 +514,8 @@ export function createCharacterButtons(playerProfile, icons = {}) {
     createPlaceholderButton("map_char_pad_6"),
     createPlaceholderButton("map_char_pad_7"),
     createPlaceholderButton("map_char_pad_8"),
-    emojiButton("map_back_to_map", customEmoji("ui_check", "✅") ?? "✅"),
-    emojiButton("map_quit", customEmoji("ui_cross", "❌") ?? "❌"),
+    emojiButton("map_char_done", customEmoji("ui_check", "✅") ?? "✅"),
+    emojiButton("map_char_quit", customEmoji("ui_cross", "❌") ?? "❌"),
   );
 
   return [row1, row2, row3, row4, row5];
@@ -580,4 +584,193 @@ export function createTalentButtons(playerProfile, selectedId = null, icons = {}
   );
 
   return [row1, row2, row3];
+}
+
+// =====================================================================
+// Professions / quests / achievements / rankings / market panels
+// =====================================================================
+
+/** Icon-only navigation button back to the map. */
+function backTile(emoji) {
+  return emojiButton("map_back_to_map", emoji ?? "<:mini_map_icon:1415348946892623892>");
+}
+
+/**
+ * Professions hub: the four gathering buttons, the three crafting benches,
+ * and the way out.
+ * @returns {ActionRowBuilder[]}
+ */
+export function createProfessionButtons() {
+  return [
+    new ActionRowBuilder().addComponents(
+      emojiButton("map_gather_mining", "⛏️"),
+      emojiButton("map_gather_woodcutting", "🪓"),
+      emojiButton("map_gather_fishing", "🎣"),
+      emojiButton("map_gather_herbalism", "🌿"),
+      backTile(),
+    ),
+    new ActionRowBuilder().addComponents(
+      emojiButton("map_craft_smithing", "🔨"),
+      emojiButton("map_craft_crafting", "🧵"),
+      emojiButton("map_craft_cooking", "🍳"),
+      emojiButton("map_show_quests", "📜"),
+      new ButtonBuilder().setCustomId("map_quit").setLabel("Quit").setStyle(ButtonStyle.Danger),
+    ),
+  ];
+}
+
+/**
+ * One button per recipe (max 4) plus navigation.
+ * @param {string} professionId
+ * @param {Array<{id: string, name: string, affordable: boolean}>} recipes
+ */
+export function createCraftButtons(professionId, recipes) {
+  const recipeButtons = recipes.slice(0, 4).map((recipe) =>
+    new ButtonBuilder()
+      .setCustomId(`map_recipe_${professionId}_${recipe.id}`)
+      .setLabel(recipe.name.slice(0, 18))
+      .setEmoji(recipe.affordable ? "✅" : "❌")
+      .setStyle(recipe.affordable ? ButtonStyle.Success : ButtonStyle.Secondary)
+      .setDisabled(!recipe.affordable),
+  );
+
+  while (recipeButtons.length < 4) {
+    recipeButtons.push(createPlaceholderButton(`map_recipe_pad_${recipeButtons.length}`));
+  }
+
+  return [
+    new ActionRowBuilder().addComponents(
+      ...recipeButtons,
+      emojiButton("map_show_professions", "🧰"),
+    ),
+    new ActionRowBuilder().addComponents(
+      backTile(),
+      createPlaceholderButton("map_craft_pad_1"),
+      createPlaceholderButton("map_craft_pad_2"),
+      createPlaceholderButton("map_craft_pad_3"),
+      new ButtonBuilder().setCustomId("map_char_quit").setLabel("Quit").setStyle(ButtonStyle.Danger),
+    ),
+  ];
+}
+
+/**
+ * Quest board controls.
+ * @param {Array<object>} quests
+ * @param {boolean} dailyReady
+ */
+export function createQuestButtons(quests, dailyReady) {
+  const drops = [0, 1, 2].map((index) =>
+    quests[index]
+      ? new ButtonBuilder()
+          .setCustomId(`map_quest_drop_${index}`)
+          .setLabel(`Drop ${index + 1}`)
+          .setStyle(ButtonStyle.Secondary)
+      : new ButtonBuilder()
+          .setCustomId(`map_quest_none_${index}`)
+          .setLabel("\u200B")
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(true),
+  );
+
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("map_quest_new").setLabel("New quest").setStyle(ButtonStyle.Primary).setEmoji("📜"),
+      new ButtonBuilder()
+        .setCustomId("map_quest_daily")
+        .setLabel("Daily")
+        .setStyle(ButtonStyle.Success)
+        .setEmoji("🌙")
+        .setDisabled(!dailyReady),
+      ...drops,
+    ),
+    new ActionRowBuilder().addComponents(
+      backTile(),
+      createPlaceholderButton("map_quest_pad_1"),
+      createPlaceholderButton("map_quest_pad_2"),
+      createPlaceholderButton("map_quest_pad_3"),
+      new ButtonBuilder().setCustomId("map_char_quit").setLabel("Quit").setStyle(ButtonStyle.Danger),
+    ),
+  ];
+}
+
+/** Achievement category filter row. */
+export function createAchievementButtons(filter = "all") {
+  const categories = [
+    ["all", "All", "🏆"],
+    ["level", "Level", "📈"],
+    ["combat", "Combat", "⚔️"],
+    ["profession", "Jobs", "🧰"],
+    ["quest", "Quests", "📜"],
+  ];
+
+  return [
+    new ActionRowBuilder().addComponents(
+      ...categories.map(([key, label, emoji]) =>
+        new ButtonBuilder()
+          .setCustomId(`map_ach_${key}`)
+          .setLabel(label)
+          .setEmoji(emoji)
+          .setStyle(key === filter ? ButtonStyle.Primary : ButtonStyle.Secondary)
+          .setDisabled(key === filter),
+      ),
+    ),
+    new ActionRowBuilder().addComponents(
+      backTile(),
+      createPlaceholderButton("map_ach_pad_1"),
+      createPlaceholderButton("map_ach_pad_2"),
+      createPlaceholderButton("map_ach_pad_3"),
+      new ButtonBuilder().setCustomId("map_char_quit").setLabel("Quit").setStyle(ButtonStyle.Danger),
+    ),
+  ];
+}
+
+/** Ranking sort row. */
+export function createRankingButtons(sort = "level") {
+  const sorts = [
+    ["level", "Level"],
+    ["professions", "Jobs"],
+    ["achievements", "Points"],
+  ];
+
+  return [
+    new ActionRowBuilder().addComponents(
+      ...sorts.map(([key, label]) =>
+        new ButtonBuilder()
+          .setCustomId(`map_rank_${key}`)
+          .setLabel(label)
+          .setEmoji("🏅")
+          .setStyle(key === sort ? ButtonStyle.Primary : ButtonStyle.Secondary)
+          .setDisabled(key === sort),
+      ),
+      backTile(),
+      new ButtonBuilder().setCustomId("map_char_quit").setLabel("Quit").setStyle(ButtonStyle.Danger),
+    ),
+  ];
+}
+
+/**
+ * Market rows: one buy button per listing plus sell / leave.
+ * @param {Array<{id: string, name: string, price: number}>} listings
+ */
+export function createMarketButtons(listings = []) {
+  const buys = [0, 1, 2, 3].map((index) => {
+    const listing = listings[index];
+    if (!listing) return createPlaceholderButton(`map_market_pad_${index}`);
+    return new ButtonBuilder()
+      .setCustomId(`map_market_buy_${listing.id}`)
+      .setLabel(`${listing.price} 🪙`.slice(0, 18))
+      .setEmoji("🛒")
+      .setStyle(ButtonStyle.Success);
+  });
+
+  return [
+    new ActionRowBuilder().addComponents(...buys, emojiButton("map_market_sell", "🏷️")),
+    new ActionRowBuilder().addComponents(
+      backTile(),
+      createPlaceholderButton("map_market_nav_1"),
+      createPlaceholderButton("map_market_nav_2"),
+      createPlaceholderButton("map_market_nav_3"),
+      new ButtonBuilder().setCustomId("map_char_quit").setLabel("Quit").setStyle(ButtonStyle.Danger),
+    ),
+  ];
 }

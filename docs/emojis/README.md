@@ -1,5 +1,7 @@
 # Emojis to upload
 
+39 names in total: 28 with art plus 11 optional icons (see the last table).
+
 Three sets, all generated from `tileset/` (or drawn as UI chrome) and named
 `slot_*` / `talent_*` / chrome names, so the code finds them without any extra
 mapping. **28 files in total.**
@@ -83,6 +85,30 @@ The eight tiles that build the character panel (8, 9, … keep numbering).
 `ui_check` / `ui_cross` / `attr_bracket` / `tab_character` are drawn with SVG,
 the three `gear_icon_*` are bright-pixel glyphs of a tileset plate, sword and
 amulet (so they read as white icons on the dark embed).
+
+# Profession / feature emojis — upload list
+
+These eleven are purely optional polish: every one of them falls back to the
+unicode glyph in brackets, and the screens are designed around that fallback,
+so nothing breaks while the slots are `null`.
+
+| # | Emoji name | Used for | Fallback |
+| --- | --- | --- | --- |
+| 29 | `prof_mining` | Mining profession line + gather button | ⛏️ |
+| 30 | `prof_woodcutting` | Woodcutting line + button | 🪓 |
+| 31 | `prof_fishing` | Fishing line + button | 🎣 |
+| 32 | `prof_herbalism` | Herbalism line + button | 🌿 |
+| 33 | `prof_smithing` | Smithing bench + professions map button | 🔨 |
+| 34 | `prof_crafting` | Crafting bench | 🧵 |
+| 35 | `prof_cooking` | Cooking bench | 🍳 |
+| 36 | `ui_quests` | map row → quest board | 📜 |
+| 37 | `ui_market` | map row → player market | 🏪 |
+| 38 | `ui_trophy` | map row → achievements | 🏆 |
+| 39 | `ui_ranks` | map row → rankings | 🏅 |
+
+Reuse one of the existing tiles if you upload custom art: the four `ui_*` read
+best as a single bright glyph on the dark panel, and the seven `prof_*` as a
+32×32 tileset glyph scaled to 128×128 (same pipeline as the bag cells).
 
 ## How the talent tiles were made
 

@@ -146,6 +146,13 @@ The button panel, top to bottom:
 | 4 | `Add an attribute:` (disabled) · `STR` `INT` `VIT` (blue) | spends one attribute point |
 | 5 | 3 blanks · ✅ · ❌ | ✅ → map, ❌ → quit |
 
+Row 1 and row 5 share actions with row 2/3 (bag, map, quit) but **never share a
+`custom_id`**: Discord rejects a whole message with `50035
+COMPONENT_CUSTOM_ID_DUPLICATED`, and you only find out when someone presses a
+button. `map_char_bag`, `map_char_done` and `map_char_quit` are aliases routed
+to the same handlers; `node scripts/check-buttons.mjs` re-checks every panel
+for duplicate ids and over-long rows.
+
 Gear is three panels side by side — 2×2 armour, 2×1 weapon, 2×2 accessory —
 one emoji per cell, so the grids line up whatever is equipped. Index 0 of each
 panel is the equipped item; until the slots exist in the profile the rest stay
@@ -195,6 +202,68 @@ Panel: `Start` · three talent buttons · `Learn` (green), then four more talent
 buttons · the sheet tile, then `Quit`. The selected node is kept per user for
 five minutes so re-renders keep the description open.
 
+## Profession screen
+
+```
+```Professions```
+🧍 Vlad · Lv. 3
+
+**Gathering**
+⛏️ **Mining** Lv. 2 ▰▰▱▱▱▱▱▱ 12/60
+🪓 **Woodcutting** Lv. 1 ▰▱▱▱▱▱▱▱ 0/60
+...
+**Crafting**
+🔨 **Smithing** Lv. 1 ▰▱▱▱▱▱▱▱ 0/60
+```
+
+Row 1 is the four gathering buttons, row 2 the three benches plus the quest
+board and `Quit`. A gather press answers ephemerally with what you found and
+re-renders the hub; the twenty-second cooldown is per user **and** per
+profession, so you can rotate between them.
+
+A bench shows one line per recipe with `held/needed` for every material, a ✅
+or ❌ in front, and disables the button when you cannot afford it. Crafting
+consumes the materials, adds the item to the bag and grants profession xp.
+
+## Quest board
+
+```
+```Quest board```
+🧍 Vlad · 🪙 120
+
+▫️ **Copper Run**
+> Mine five copper ore — 2/5
+
+**Daily bounty** — available
+**Completed** — 3
+```
+
+Three quest slots (`MAX_QUESTS`), a 🌙 daily bounty on a twenty-hour cooldown,
+and one `Drop N` button per held quest. Progress is fed by the same events that
+feed achievements: gathering, crafting, kills and boss kills. Finishing one
+pays gold and XP immediately and shows up in the combat/activity strip.
+
+## Achievements
+
+Seventeen achievements in four categories (level, combat, professions,
+quests), filterable with the first row, worth 355 points in total. They are
+checked after every save point (`awardAchievements`), so an offline grant or a
+level-up cannot skip one.
+
+## Rankings
+
+`Top by level`, `Top by profession levels` and `Top by achievement points`,
+ten rows each, one query per screen (`Profile.find().sort().limit().lean()`),
+then sorted in memory.
+
+## Market
+
+Sell takes whatever is selected in the bag (one unit per listing, three days
+until it expires), buy takes the cheapest row, claims the listing with
+`findOneAndDelete` so two buyers cannot both win, and pays the seller with a
+direct `updateOne` because they are usually offline. Your own listings are
+rejected. Prices default to 90% of item value (`suggestedPrice`).
+
 ## Gameplay bits that support the look
 
 - **Level ups**: XP curve `10 + 15 × (level − 1)`, +5 HP and +1 attack/defense
@@ -222,12 +291,11 @@ five minutes so re-renders keep the description open.
 3. **Real shop** — the shop screen is still a "COMING SOON" placeholder.
 4. **Dungeon floors with a boss every 5 levels** — `areaLabel(map, depth)`
    already renders a `Depth N` suffix.
-5. **Quests / NPC dialogue** — `map.events` models them; actions only print a
+5. **NPC dialogue** — `map.events` models it; actions still only print a
    description.
 6. **Skills and status effects** — `Profile.skills` is an empty array; combat
    is still one exchange per step.
-7. **Trading / marketplace / auction house**, guilds, friends, rankings,
-   achievements, professions, dungeons and the open world — the screens above
-   are the shell these hang off; none of them exist yet.
+7. **Guilds and friends** — the only social systems still missing; rankings,
+   achievements, professions, quests, the market and the open world are in.
 8. **More talents** — the tree holds 7 nodes today (`config/talents.js`); a
    LoD-sized tree is ~30, laid out by editing `TREE_LAYOUT`.
