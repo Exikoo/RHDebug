@@ -1,11 +1,13 @@
+import { customEmoji } from "./emojiIds.js";
+
 export const EMOJI_MAP = {
   D: "<:floor:1393658990449262822>", // floor
   W: "<:stone_brick_1:1414280361885827213>", // wall
   P: "<:player:1414284867813773372>", // player on grass
   G: "<:grass:1411386955026923550>", // grass
   T: "<:tree_on_grass:1414283682579091466>", // tree on grass
-  ROCK: "🪨", // boulder (unicode until art is uploaded)
-  CHEST: "📦", // treasure chest
+  ROCK: customEmoji("tile_rock", "🪨"), // boulder
+  CHEST: customEmoji("tile_chest", "📦"), // treasure chest
   S: "<:stairs:1393659058946441297>", // stairs
   WT: "<:shoals_deep_water_1_shape:1414281044554809354>", // water
   WD: "<:enter_shop:1414281517592477836>", // door

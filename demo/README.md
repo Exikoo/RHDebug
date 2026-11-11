@@ -30,9 +30,27 @@ Then in any channel: `/demo` (slash) or `!demo` (prefix).
 ```
 
 The gif's field is a rendered image. This bot keeps the project's rule that
-nothing in-game is an image: the field is a grid of the uploaded `grass`
-emoji with the `player` emoji standing on it, and the bars are one coloured
-square per point (`🟥`/`🟦`, `⬛` for the missing points).
+nothing in-game is an image: the field is a grid of emoji built **from the
+tileset in `tileset/`**, and the bars are one emoji per point.
+
+| Emoji | Art |
+| --- | --- |
+| `demo_grass_1` | `dngn/floor/grass/grass0.png` |
+| `demo_grass_2` | `dngn/floor/grass/grass-dark0.png` (1 tile in 6, the speckle) |
+| `demo_player` | `player/base/human_m.png` |
+| `bar_hp` / `bar_hp_empty` | drawn segment, red / dark |
+| `bar_mana` / `bar_mana_empty` | drawn segment, blue / dark |
+
+They are generated, not hand-drawn:
+
+```bash
+npm run build:emojis     # tileset 32px -> 128px PNGs in docs/emojis
+```
+
+then `/emojis upload` in Discord and paste the printed block into
+`config/emojiIds.js`. Until the IDs are pasted (or in a guild that cannot see
+the emojis) every glyph falls back to `🟩` / `🧍` / `🟥` / `🟦` / `⬛`, so the
+screen never breaks.
 
 ## How the pad moves you
 

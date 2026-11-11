@@ -1,6 +1,7 @@
 # Emojis to upload
 
-39 names in total: 28 with art plus 11 optional icons (see the last table).
+49 names in total: 28 original, 9 built from the tileset by
+`npm run build:emojis`, 11 optional icons and 1 gold counter (see the tables).
 
 Three sets, all generated from `tileset/` (or drawn as UI chrome) and named
 `slot_*` / `talent_*` / chrome names, so the code finds them without any extra
@@ -109,6 +110,30 @@ so nothing breaks while the slots are `null`.
 Reuse one of the existing tiles if you upload custom art: the four `ui_*` read
 best as a single bright glyph on the dark panel, and the seven `prof_*` as a
 32×32 tileset glyph scaled to 128×128 (same pipeline as the bag cells).
+
+# Demo / tile emojis — built from the tileset
+
+`npm run build:emojis` writes these straight out of `tileset/` (32 → 128 px,
+nearest neighbour so the pixels stay sharp). Re-run it after changing the
+tileset; nothing else needs editing, the names are already in
+`config/emojiIds.js`.
+
+| # | File | Emoji name | Used for | Built from |
+| --- | --- | --- | --- | --- |
+| 29 | `demo_grass_1.png` | `demo_grass_1` | demo field, base tile | `dngn/floor/grass/grass0.png` |
+| 30 | `demo_grass_2.png` | `demo_grass_2` | demo field speckle (1 in 6) | `dngn/floor/grass/grass-dark0.png` |
+| 31 | `demo_player.png` | `demo_player` | the walking sprite | `player/base/human_m.png` |
+| 32 | `tile_rock.png` | `tile_rock` | boulder on the plain | `item/misc/misc_stone.png` |
+| 33 | `tile_chest.png` | `tile_chest` | treasure chest | `item/misc/misc_box_of_beasts.png` |
+| 34 | `bar_hp.png` | `bar_hp` | one HP point | drawn, tileset palette |
+| 35 | `bar_hp_empty.png` | `bar_hp_empty` | one spent HP point | drawn, tileset palette |
+| 36 | `bar_mana.png` | `bar_mana` | one Mana point | drawn, tileset palette |
+| 37 | `bar_mana_empty.png` | `bar_mana_empty` | one spent Mana point | drawn, tileset palette |
+
+The DCSS set has no health/mana bar of its own, so those four are drawn as a
+dark frame with a lit top edge and a shaded bottom, in the gif's red
+(`#b3382f`) and blue (`#2f6fd0`) — one emoji per point, ten of them for
+`HP: 10/10`.
 
 ## How the talent tiles were made
 

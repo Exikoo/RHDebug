@@ -7,7 +7,7 @@
  */
 import { renderPanel } from "./view.js";
 import { gameFor } from "./store.js";
-import { move, undo } from "./world.js";
+import { fieldGlyphs, move, undo } from "./world.js";
 
 const MOVE_PREFIX = "demo_move_";
 const NOOP_PREFIX = "demo_none_";
@@ -31,15 +31,7 @@ export function applyButton(game, customId) {
   return { moved: false, blocked: false };
 }
 
-/** Discord renders the emoji ids; keep them when the guild has them. */
-function glyphsFor(client) {
-  const grass = client?.emojis?.cache?.has?.("1411386955026923550");
-  const sprite = client?.emojis?.cache?.has?.("1414284867813773372");
-  return {
-    grass: grass === false ? "🟩" : undefined,
-    sprite: sprite === false ? "🧍" : undefined,
-  };
-}
+
 
 /**
  * @param {import("discord.js").ButtonInteraction} interaction
@@ -52,7 +44,9 @@ export async function handleInteraction(interaction) {
 
   applyButton(game, interaction.customId);
 
-  return interaction.update(renderPanel(game, glyphsFor(interaction.client)));
+  return interaction.update(
+    renderPanel(game, fieldGlyphs(interaction.client)),
+  );
 }
 
 /**
@@ -67,5 +61,5 @@ export async function openPanel(source, target) {
     name: user.tag ?? user.username,
   });
 
-  return target.reply(renderPanel(game, glyphsFor(source.client)));
+  return target.reply(renderPanel(game, fieldGlyphs(source.client)));
 }

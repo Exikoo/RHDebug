@@ -7,13 +7,31 @@
  */
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 
-import { BARS, DIRECTIONS, fieldRows, VITALS } from "./world.js";
+import { DIRECTIONS, FALLBACK, fieldGlyphs, fieldRows, glyph, VITALS } from "./world.js";
 
 /** Discord's dark panel colour, so the embeds blend with the client. */
 const PANEL = 0x2b2d31;
 
 /** Zero-width label: the pad's empty cells are still real buttons. */
 const BLANK = "\u200B";
+
+/**
+ * Bar glyphs, one emoji per point. Both come from docs/emojis (built by
+ * scripts/build-demo-emojis.mjs) and fall back to coloured squares.
+ * @param {import("discord.js").Client|null} [client]
+ */
+export function barGlyphs(client = null) {
+  return {
+    hp: {
+      filled: glyph("bar_hp", FALLBACK.hpFull, client),
+      empty: glyph("bar_hp_empty", FALLBACK.hpEmpty, client),
+    },
+    mana: {
+      filled: glyph("bar_mana", FALLBACK.manaFull, client),
+      empty: glyph("bar_mana_empty", FALLBACK.manaEmpty, client),
+    },
+  };
+}
 
 /** One square per point, filled then empty. */
 export function bar(current, max, glyphs) {
@@ -23,26 +41,26 @@ export function bar(current, max, glyphs) {
 }
 
 /** The name + vitals panel. */
-export function vitalsEmbed(game) {
+export function vitalsEmbed(game, bars = barGlyphs()) {
   return new EmbedBuilder()
     .setColor(PANEL)
     .setDescription(`**${game.name}**`)
     .addFields(
       {
         name: `HP: ${game.hp}/${game.maxHp}`,
-        value: bar(game.hp, game.maxHp, BARS.hp),
+        value: bar(game.hp, game.maxHp, bars.hp),
         inline: true,
       },
       {
         name: `Mana: ${game.mana}/${game.maxMana}`,
-        value: bar(game.mana, game.maxMana, BARS.mana),
+        value: bar(game.mana, game.maxMana, bars.mana),
         inline: true,
       },
     );
 }
 
 /** The field panel; the coordinate line rides in the footer. */
-export function fieldEmbed(game, glyphs) {
+export function fieldEmbed(game, glyphs = fieldGlyphs()) {
   return new EmbedBuilder()
     .setColor(PANEL)
     .setDescription(fieldRows(game, glyphs).join("\n"))
@@ -101,9 +119,9 @@ export function padRows(game) {
  * @param {object} game
  * @param {{grass?: string, sprite?: string}} [glyphs]
  */
-export function renderPanel(game, glyphs) {
+export function renderPanel(game, glyphs = fieldGlyphs(), bars = barGlyphs()) {
   return {
-    embeds: [vitalsEmbed(game), fieldEmbed(game, glyphs)],
+    embeds: [vitalsEmbed(game, bars), fieldEmbed(game, glyphs)],
     components: padRows(game),
   };
 }

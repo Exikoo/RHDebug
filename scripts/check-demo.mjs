@@ -11,14 +11,21 @@ import { PAD_IDS, renderPanel, STARTING_VITALS } from "../demo/view.js";
 import {
   camera,
   createGame,
+  FALLBACK,
+  fieldGlyphs,
   fieldRows,
+  glyph,
+  grassAt,
   move,
   SPAWN,
-  SPRITE,
   undo,
   VIEW,
   WORLD,
 } from "../demo/world.js";
+import { barGlyphs } from "../demo/view.js";
+import { allEmojiNames, EMOJI_GROUPS, pendingEmojis } from "../config/emojiIds.js";
+import fs from "node:fs";
+import path from "node:path";
 
 const results = [];
 const test = (name, fn) => {
@@ -38,6 +45,85 @@ const json = (frame) => ({
   components: frame.components.map((row) => row.toJSON().components),
 });
 
+console.log("\nemojis");
+test("the demo emojis are registered and their PNGs exist", () => {
+  const names = Object.keys(EMOJI_GROUPS.demo);
+  assert.deepEqual(names, [
+    "demo_grass_1",
+    "demo_grass_2",
+    "demo_player",
+    "bar_hp",
+    "bar_hp_empty",
+    "bar_mana",
+    "bar_mana_empty",
+  ]);
+
+  for (const name of names) {
+    assert.ok(allEmojiNames().includes(name), `${name} is not in allEmojiNames()`);
+    const file = path.resolve("docs/emojis", `${name}.png`);
+    assert.ok(fs.existsSync(file), `missing ${name}.png — run npm run build:emojis`);
+
+    // 128 x 128, straight out of the PNG header (no image library needed).
+    const header = fs.readFileSync(file).subarray(0, 24);
+    assert.equal(header.readUInt32BE(16), 128, `${name}.png is not 128 wide`);
+    assert.equal(header.readUInt32BE(20), 128, `${name}.png is not 128 tall`);
+  }
+
+  // Nothing is uploaded yet, so every one of them is still pending.
+  const pending = pendingEmojis();
+  for (const name of names) assert.ok(pending.includes(name), `${name} should be pending`);
+});
+
+test("the field and bars use the configured emoji, not the fallback", () => {
+  // Pretend the upload happened and the guild can see the emojis.
+  for (const name of Object.keys(EMOJI_GROUPS.demo)) {
+    EMOJI_GROUPS.demo[name] = "123456789012345678";
+  }
+  try {
+    const glyphs = fieldGlyphs({ emojis: { cache: { has: () => true } } });
+    assert.equal(glyphs.grass, "<:demo_grass_1:123456789012345678>");
+    assert.equal(glyphs.grassDark, "<:demo_grass_2:123456789012345678>");
+    assert.equal(glyphs.sprite, "<:demo_player:123456789012345678>");
+
+    const bars = barGlyphs({ emojis: { cache: { has: () => true } } });
+    assert.equal(bars.hp.filled, "<:bar_hp:123456789012345678>");
+    assert.equal(bars.mana.empty, "<:bar_mana_empty:123456789012345678>");
+
+    const [vitals] = json(renderPanel(fresh())).embeds;
+    assert.ok(vitals.fields[0].value.startsWith("<:bar_hp:"), "the HP bar ignored the emoji");
+    assert.ok(
+      json(renderPanel(fresh())).embeds[1].description.startsWith("<:demo_grass_"),
+      "the field ignored the emoji",
+    );
+  } finally {
+    for (const name of Object.keys(EMOJI_GROUPS.demo)) EMOJI_GROUPS.demo[name] = null;
+  }
+});
+
+test("a guild that is missing the emoji gets the unicode stand-in", () => {
+  for (const name of Object.keys(EMOJI_GROUPS.demo)) {
+    EMOJI_GROUPS.demo[name] = "123456789012345678";
+  }
+  try {
+    const glyphs = fieldGlyphs({ emojis: { cache: { has: () => false } } });
+    assert.equal(glyphs.grass, FALLBACK.grass);
+    assert.equal(glyphs.sprite, FALLBACK.sprite);
+    assert.equal(glyph("demo_grass_1", "x"), "<:demo_grass_1:123456789012345678>");
+  } finally {
+    for (const name of Object.keys(EMOJI_GROUPS.demo)) EMOJI_GROUPS.demo[name] = null;
+  }
+});
+
+test("the field mixes two grass tiles deterministically", () => {
+  const dark = [];
+  const light = [];
+  for (let y = 0; y < 8; y += 1) {
+    for (let x = 0; x < 12; x += 1) (grassAt(x, y) === "grassDark" ? dark : light).push([x, y]);
+  }
+  assert.ok(dark.length > 4 && light.length > 40, `expected a speckle, got ${dark.length} dark`);
+  assert.equal(grassAt(3, 5), grassAt(3, 5), "the speckle must not be random");
+});
+
 console.log("\npanel");
 test("two panels: vitals, then the field", () => {
   const { embeds } = json(renderPanel(fresh()));
@@ -55,13 +141,16 @@ test("two panels: vitals, then the field", () => {
 
 test("bars are one square per point", () => {
   const [vitals] = json(renderPanel(fresh())).embeds;
-  assert.equal(vitals.fields[0].value, "🟥".repeat(STARTING_VITALS.maxHp));
-  assert.equal(vitals.fields[1].value, "🟦".repeat(STARTING_VITALS.maxMana));
+  assert.equal(vitals.fields[0].value, FALLBACK.hpFull.repeat(STARTING_VITALS.maxHp));
+  assert.equal(vitals.fields[1].value, FALLBACK.manaFull.repeat(STARTING_VITALS.maxMana));
 
   const hurt = fresh();
   hurt.hp = 4;
   const [vitalsHurt] = json(renderPanel(hurt)).embeds;
-  assert.equal(vitalsHurt.fields[0].value, "🟥".repeat(4) + "⬛".repeat(6));
+  assert.equal(
+    vitalsHurt.fields[0].value,
+    FALLBACK.hpFull.repeat(4) + FALLBACK.hpEmpty.repeat(6),
+  );
   assert.equal(vitalsHurt.fields[0].name, "HP: 4/10");
 });
 
@@ -72,7 +161,7 @@ test("the field is a 16 x 7 window with the sprite on it", () => {
     const glyphs = row.match(/<a?:[^>]+>|\p{Extended_Pictographic}/gu) ?? [];
     assert.equal(glyphs.length, VIEW.width, `row has ${glyphs.length} tiles`);
   }
-  const spriteCells = rows.join("").split(SPRITE).length - 1;
+  const spriteCells = rows.join("").split(FALLBACK.sprite).length - 1;
   assert.equal(spriteCells, 1, "exactly one sprite");
 });
 
